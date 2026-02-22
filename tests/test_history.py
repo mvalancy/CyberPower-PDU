@@ -1,3 +1,8 @@
+# CyberPower PDU Bridge
+# Created by Matthew Valancy, Valpatel Software LLC
+# Copyright 2026 MIT License
+# https://github.com/mvalancy/CyberPower-PDU
+
 """Unit tests for SQLite history storage."""
 
 import json
