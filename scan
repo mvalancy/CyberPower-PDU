@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# CyberPower PDU Bridge
+# Created by Matthew Valancy, Valpatel Software LLC
+# Copyright 2026 MIT License
+# https://github.com/mvalancy/CyberPower-PDU
+set -euo pipefail
+
+cd "$(dirname "$0")"
+source lib/common.sh
+
+check_help "${1:-}" "./scan" "Discover CyberPower PDUs on the network" \
+"Usage: ./scan [--subnet 192.168.1.0/24] [--community public]
+
+Scans a subnet for CyberPower PDUs via SNMP and prints a
+table of discovered devices with model, serial, and outlet count.
+
+Options:
+  --subnet CIDR       Subnet to scan (default: auto-detect)
+  --community STRING  SNMP community string (default: public)
+  --timeout SECONDS   Per-host timeout (default: 1)
+
+Examples:
+  ./scan
+  ./scan --subnet 192.168.20.0/24
+  ./scan --subnet 10.0.0.0/24 --community private"
+
+banner
+
+# Parse arguments
+SUBNET=""
+COMMUNITY="public"
+TIMEOUT="1"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --subnet) SUBNET="$2"; shift 2 ;;
+        --community) COMMUNITY="$2"; shift 2 ;;
+        --timeout) TIMEOUT="$2"; shift 2 ;;
+        *) error "Unknown argument: $1"; exit 1 ;;
+    esac
+done
+
+# Try running via Docker first, fall back to native Python
+if docker compose ps bridge --format '{{.Name}}' 2>/dev/null | grep -q bridge; then
+    step "Scanning for CyberPower PDUs via Docker"
+    ARGS="--community $COMMUNITY --timeout $TIMEOUT"
+    [ -n "$SUBNET" ] && ARGS="$ARGS --subnet $SUBNET"
+    docker compose exec bridge python -m bridge.src.discovery $ARGS
+elif python3 -c "import pysnmp" 2>/dev/null; then
+    step "Scanning for CyberPower PDUs (native Python)"
+    ARGS="--community $COMMUNITY --timeout $TIMEOUT"
+    [ -n "$SUBNET" ] && ARGS="$ARGS --subnet $SUBNET"
+    python3 -m bridge.src.discovery $ARGS
+else
+    error "Cannot run scan — either start the Docker stack (./run) or install pysnmp-lextudio"
+    info "  pip install pysnmp-lextudio"
+    exit 1
+fi

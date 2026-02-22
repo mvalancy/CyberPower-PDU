@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# CyberPower PDU Bridge
+# Created by Matthew Valancy, Valpatel Software LLC
+# Copyright 2026 MIT License
+# https://github.com/mvalancy/CyberPower-PDU
+set -euo pipefail
+
+cd "$(dirname "$0")"
+source lib/common.sh
+
+check_help "${1:-}" "./wizard" "Interactive first-time setup wizard" \
+"Usage: ./wizard
+
+Walks you through discovering CyberPower PDUs on your network,
+selecting which ones to monitor, and writing the configuration.
+
+Steps:
+  1. Scans your network for CyberPower PDUs
+  2. Lets you select which PDUs to monitor
+  3. Tests SNMP connectivity to each
+  4. Writes pdus.json configuration
+  5. Prints next steps to get running"
+
+banner
+
+# Try running via Docker first, fall back to native Python
+if docker compose ps bridge --format '{{.Name}}' 2>/dev/null | grep -q bridge; then
+    step "Starting setup wizard via Docker"
+    docker compose exec -it bridge python -m bridge.src.setup_wizard
+elif python3 -c "import pysnmp" 2>/dev/null; then
+    step "Starting setup wizard (native Python)"
+    python3 -m bridge.src.setup_wizard
+else
+    error "Cannot run wizard — either start the Docker stack (./run) or install pysnmp-lextudio"
+    info "  pip install pysnmp-lextudio"
+    exit 1
+fi

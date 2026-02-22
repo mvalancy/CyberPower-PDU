@@ -72,8 +72,20 @@ services:
       - BRIDGE_MOCK_MODE=${BRIDGE_MOCK_MODE}
       - BRIDGE_LOG_LEVEL=${BRIDGE_LOG_LEVEL}
       - BRIDGE_WEB_PORT=${BRIDGE_WEB_PORT:-8080}
+      - BRIDGE_SNMP_TIMEOUT=${BRIDGE_SNMP_TIMEOUT:-2.0}
+      - BRIDGE_SNMP_RETRIES=${BRIDGE_SNMP_RETRIES:-1}
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - BRIDGE_RULES_FILE=/data/rules.json
+      - BRIDGE_PDUS_FILE=/data/pdus.json
+      - HISTORY_RETENTION_DAYS=${HISTORY_RETENTION_DAYS:-60}
+      - HOUSE_MONTHLY_KWH=${HOUSE_MONTHLY_KWH:-0}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   mosquitto-data:
