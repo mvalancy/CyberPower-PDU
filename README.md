@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 
-A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family, with a real-time web dashboard, historical charts, automation rules, and Home Assistant integration.
+A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family — including **Automatic Transfer Switch (ATS)** models — with a real-time web dashboard, historical charts, automation rules, and Home Assistant integration.
 
 ![CyberPower PDU Bridge Dashboard](docs/screenshots/dashboard.png)
 
@@ -8,16 +8,18 @@ A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family, with a real-t
 
 ## What Is This?
 
-A **PDU** (Power Distribution Unit) is a smart power strip for server racks. It monitors voltage, current, and power consumption, and lets you remotely turn individual outlets on and off. CyberPower PDUs communicate using SNMP -- a decades-old protocol that most modern tools do not understand natively.
+A **PDU** (Power Distribution Unit) is a smart power strip for server racks. CyberPower's ATS models go further: they accept **two independent power sources** (e.g., grid/utility power on Input A and a battery inverter like EcoFlow, Bluetti, or a whole-house solar system on Input B) and automatically switch between them if the primary source fails. This gives your equipment uninterrupted power — even during outages.
 
-This project bridges that gap. It polls your CyberPower PDUs over SNMP, translates the data into MQTT (the standard for IoT), stores history in a local SQLite database, and serves a web dashboard -- all from a single Docker container. No cloud services, no subscriptions, no external dependencies.
+These PDUs communicate using SNMP, a decades-old protocol that most modern tools do not understand natively. This project bridges that gap. It polls your CyberPower PDUs over SNMP, translates the data into MQTT (the standard for IoT), stores history in a local SQLite database, and serves a web dashboard — all from a single Docker container. No cloud services, no subscriptions, no external dependencies.
 
 ## Why Would I Want It?
 
-- **See everything at a glance** -- Live dashboard showing outlet states, power draw per bank, ATS status, and dual-source monitoring.
+- **Dual-source power monitoring** -- See both inputs in real time: grid/utility on A, battery/solar/inverter on B. Know instantly when the ATS transfers and which source is active.
+- **Protect equipment during transfers** -- Automation rules can shed non-critical loads before a transfer happens, preventing backfeed or overloading a battery inverter (e.g., EcoFlow, Bluetti, whole-house Enphase).
+- **See everything at a glance** -- Live dashboard showing outlet states, power draw per bank, ATS transfer switch status, and per-source voltage/frequency.
 - **Control outlets remotely** -- Turn outlets on, off, or reboot them from the web UI, MQTT, or REST API.
 - **Track power history** -- 60 days of 1-second-resolution charts with CSV export.
-- **Automate with rules** -- "If voltage drops below 108V, turn off outlet 5." "At 10 PM, shut down the lab lights."
+- **Automate with rules** -- "If voltage drops below 108V, turn off outlet 5." "When ATS switches to Source B, shed the lab equipment." "At 10 PM, shut down the lights."
 - **Integrate with Home Assistant** -- MQTT auto-discovery creates switches and sensors automatically.
 - **Monitor multiple PDUs** -- Single bridge instance handles any number of CyberPower PDUs.
 - **Run without a PDU** -- Mock mode generates realistic simulated data for development and demos.
@@ -181,7 +183,7 @@ The single-page web UI provides real-time monitoring, outlet control, historical
 ./test              # Test against real PDU
 ./test --mock       # Full stack with simulated data
 ./test --snmpwalk   # OID discovery walk
-pytest tests/ -v    # Unit tests (407 tests)
+pytest tests/ -v    # Unit tests (452 tests)
 ```
 
 ---
