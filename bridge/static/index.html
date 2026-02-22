@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberPDU</title>
+<style>
+:root {
+  --bg: #0b0e14;
+  --surface: #141820;
+  --surface-hi: #1c2030;
+  --border: #262b3a;
+  --border-hi: #363c50;
+  --text: #e2e4e9;
+  --text-2: #8b8fa3;
+  --text-3: #565b6e;
+  --green: #00dc82;
+  --green-dim: rgba(0,220,130,.12);
+  --red: #ff4757;
+  --red-dim: rgba(255,71,87,.12);
+  --blue: #0078ff;
+  --blue-dim: rgba(0,120,255,.1);
+  --amber: #ffad20;
+  --amber-dim: rgba(255,173,32,.12);
+  --purple: #a78bfa;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit}
+
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;
+  border-bottom:1px solid var(--border);background:var(--surface)}
+.header-brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--text)}
+.header-brand svg{color:var(--amber)}
+.header-device{font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:8px}
+.header-device code{background:var(--surface-hi);padding:2px 8px;border-radius:4px;font-size:12px;color:var(--text-3)}
+.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.conn-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.conn-dot.err{background:var(--red);box-shadow:0 0 6px var(--red)}
+.conn-label{font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+
+/* Layout */
+.main{max-width:1280px;margin:0 auto;padding:24px}
+.section{margin-bottom:24px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)}
+
+/* ATS Panel */
+.ats-panel{background:var(--surface);border:2px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:border-color .4s}
+.ats-panel.normal{border-color:var(--blue)}
+.ats-panel.degraded{border-color:var(--amber)}
+
+.ats-header{padding:14px 20px;display:flex;align-items:center;justify-content:space-between;transition:background .4s}
+.ats-panel.normal .ats-header{background:rgba(0,120,255,.08)}
+.ats-panel.degraded .ats-header{background:rgba(255,173,32,.1)}
+.ats-title{font-size:13px;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.ats-panel.normal .ats-title{color:var(--blue)}
+.ats-panel.degraded .ats-title{color:var(--amber)}
+.ats-status-text{font-size:12px;font-weight:600;letter-spacing:.5px}
+.ats-panel.normal .ats-status-text{color:var(--blue)}
+.ats-panel.degraded .ats-status-text{color:var(--amber)}
+
+.ats-body{padding:20px;display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:stretch}
+@media(max-width:800px){
+  .ats-body{grid-template-columns:1fr;gap:16px}
+  .ats-flow{min-height:120px}
+}
+
+/* ATS input/output columns */
+.ats-col{display:flex;flex-direction:column;gap:12px}
+.ats-col-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-3);margin-bottom:4px}
+.ats-input-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.ats-input-block .inp-label{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.ats-input-block .inp-label .inp-tag{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.5px}
+.inp-tag-a{background:var(--blue-dim);color:var(--blue)}
+.inp-tag-b{background:rgba(167,139,250,.12);color:var(--purple)}
+.ats-input-block .inp-voltage{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1.1}
+.ats-input-block .inp-sub{font-size:11px;margin-top:2px;display:flex;align-items:center;gap:6px}
+.ats-input-block .inp-sub .inp-status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ats-input-block .inp-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.ats-input-block .inp-metric .im-val{font-size:14px;font-weight:600}
+.ats-input-block .inp-metric .im-lbl{font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.ats-input-block.active{border-color:var(--green);background:rgba(0,220,130,.03)}
+.ats-input-block.active .inp-voltage{color:var(--green)}
+.ats-input-block.active .inp-sub{color:var(--green)}
+.ats-input-block.active .inp-sub .inp-status-dot{background:var(--green);box-shadow:0 0 4px var(--green)}
+.ats-input-block.dead{border-color:var(--red);background:rgba(255,71,87,.03)}
+.ats-input-block.dead .inp-voltage{color:var(--red)}
+.ats-input-block.dead .inp-sub{color:var(--red)}
+.ats-input-block.dead .inp-sub .inp-status-dot{background:var(--red);box-shadow:0 0 4px var(--red)}
+.ats-input-block.standby-ok{border-color:var(--border-hi);background:rgba(0,220,130,.01)}
+.ats-input-block.standby-ok .inp-voltage{color:var(--text-2)}
+.ats-input-block.standby-ok .inp-sub{color:var(--text-2)}
+.ats-input-block.standby-ok .inp-sub .inp-status-dot{background:var(--green)}
+.ats-input-block.standby-unknown .inp-voltage{color:var(--text-3)}
+.ats-input-block.standby-unknown .inp-sub{color:var(--text-3)}
+.ats-input-block.standby-unknown .inp-sub .inp-status-dot{background:#555}
+
+/* ATS flow diagram (center SVG) */
+.ats-flow{display:flex;align-items:center;justify-content:center;min-width:240px;padding:0 8px}
+.ats-flow svg{width:100%;height:100%;max-height:200px}
+
+/* ATS LED bar */
+.ats-leds{display:flex;align-items:center;justify-content:center;gap:24px;padding:16px 20px;
+  border-top:1px solid var(--border);background:var(--bg)}
+.led{display:flex;flex-direction:column;align-items:center;gap:6px}
+.led-bulb{width:12px;height:12px;border-radius:50%;border:2px solid var(--border);transition:all .3s}
+.led-bulb.green{background:var(--green);border-color:var(--green);box-shadow:0 0 8px var(--green)}
+.led-bulb.red{background:var(--red);border-color:var(--red);box-shadow:0 0 8px var(--red)}
+.led-bulb.off{background:var(--surface-hi);border-color:var(--border)}
+.led-bulb.gray{background:#444;border-color:#555}
+.led-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);white-space:nowrap}
+
+/* Output / bus stats */
+.ats-output-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.ats-output-block .out-label{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px}
+.ats-output-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.out-stat .os-val{font-size:18px;font-weight:700;line-height:1.1}
+.out-stat .os-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.ats-output-block.healthy{border-color:var(--green)}
+.ats-output-block.healthy .out-label{color:var(--green)}
+
+/* Outlets */
+.outlets-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.outlet-tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+.outlet-tile:hover{border-color:var(--border-hi);background:var(--surface-hi)}
+.outlet-tile .o-num{font-size:13px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;justify-content:center;gap:4px}
+.outlet-tile .o-name{font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
+.outlet-tile .o-state{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.outlet-tile .o-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.outlet-tile.on .o-dot{background:var(--green);box-shadow:0 0 4px var(--green)}
+.outlet-tile.on .o-state{color:var(--green)}
+.outlet-tile.off .o-dot{background:var(--red)}
+.outlet-tile.off .o-state{color:var(--red)}
+.outlet-tile .o-power{font-size:11px;color:var(--text-3);margin-top:4px}
+.o-edit-btn{background:none;border:none;color:var(--text-3);padding:0;font-size:11px;cursor:pointer;opacity:.5;transition:opacity .15s}
+.o-edit-btn:hover{opacity:1;color:var(--blue)}
+.o-name-input{width:80px;padding:2px 4px;font-size:10px;border:1px solid var(--blue);border-radius:3px;
+  background:var(--bg);color:var(--text);outline:none;text-align:center}
+
+/* Outlet popover */
+.outlet-pop{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;
+  background:var(--surface-hi);border:1px solid var(--border-hi);border-radius:var(--radius);
+  padding:6px;display:none;z-index:100;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.outlet-tile.active .outlet-pop{display:flex;gap:4px}
+.pop-btn{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);
+  color:var(--text-2);font-size:11px;font-weight:600;transition:all .1s}
+.pop-btn:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
+.pop-btn.on{border-color:var(--green);color:var(--green)}
+.pop-btn.on:hover{background:var(--green-dim)}
+.pop-btn.off{border-color:var(--red);color:var(--red)}
+.pop-btn.off:hover{background:var(--red-dim)}
+.pop-btn.reboot{border-color:var(--amber);color:var(--amber)}
+.pop-btn.reboot:hover{background:var(--amber-dim)}
+
+/* Charts */
+.charts-wrap{display:grid;grid-template-columns:1fr;gap:12px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.chart-row{grid-template-columns:1fr}}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px}
+.chart-card.wide{grid-column:1/-1}
+.chart-label{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.chart-card canvas{width:100%;height:120px;display:block}
+.chart-card.wide canvas{height:160px}
+.chart-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.range-btn{padding:4px 12px;border:1px solid var(--border);border-radius:4px;background:transparent;
+  color:var(--text-2);font-size:11px;font-weight:600;transition:all .15s;cursor:pointer}
+.range-btn:hover{background:var(--surface-hi);border-color:var(--border-hi)}
+.range-btn.active{background:var(--blue-dim);color:var(--blue);border-color:var(--blue)}
+.export-btn{margin-left:auto}
+
+/* Rules */
+.rules-table{width:100%;border-collapse:collapse}
+.rules-table th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);
+  padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.rules-table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+.rules-table tr:last-child td{border-bottom:none}
+.rules-table tr:hover td{background:var(--surface-hi)}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.badge-armed{background:var(--green-dim);color:var(--green)}.badge-armed::before{background:var(--green)}
+.badge-triggered{background:var(--red-dim);color:var(--red)}.badge-triggered::before{background:var(--red);box-shadow:0 0 4px var(--red)}
+.badge-pending{background:var(--amber-dim);color:var(--amber)}.badge-pending::before{background:var(--amber)}
+.rule-condition{color:var(--text-2);font-size:12px}
+.rule-actions{display:flex;gap:4px}
+.btn-sm{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;
+  color:var(--text-2);font-size:11px;font-weight:600;transition:all .1s}
+.btn-sm:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
+.btn-sm.danger:hover{color:var(--red);border-color:var(--red)}
+.rules-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.card-body{padding:16px 20px}
+
+/* Add/edit rule form */
+.rule-form-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:20px;display:none}
+.rule-form-wrap.open{display:block}
+.rule-form-title{font-size:13px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.rule-form{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+@media(max-width:700px){.rule-form{grid-template-columns:1fr 1fr}}
+.field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:4px}
+.field input,.field select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);color:var(--text);font-size:13px;outline:none;transition:border-color .15s}
+.field input:focus,.field select:focus{border-color:var(--blue)}
+.field-check{display:flex;align-items:center;gap:8px;padding-top:20px}
+.field-check input{width:16px;height:16px;accent-color:var(--blue)}
+.field-check label{font-size:13px;color:var(--text-2)}
+.form-btns{grid-column:1/-1;display:flex;gap:8px;margin-top:4px}
+.btn{padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;border:none;transition:all .15s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#0068dd}
+.btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--surface-hi);color:var(--text)}
+.btn-add{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid var(--border);
+  background:transparent;color:var(--text-2);transition:all .15s;display:flex;align-items:center;gap:4px}
+.btn-add:hover{background:var(--blue-dim);color:var(--blue);border-color:var(--blue)}
+.threshold-hint{font-size:10px;color:var(--text-3);margin-top:2px;display:none}
+.threshold-hint.visible{display:block}
+
+/* Events */
+.events-list{max-height:280px;overflow-y:auto;padding:4px 0}
+.events-list::-webkit-scrollbar{width:4px}
+.events-list::-webkit-scrollbar-track{background:transparent}
+.events-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.ev-item{display:grid;grid-template-columns:70px auto;gap:8px;padding:8px 12px;font-size:12px;
+  border-bottom:1px solid var(--border);transition:background .1s}
+.ev-item:last-child{border-bottom:none}
+.ev-item:hover{background:var(--surface-hi)}
+.ev-ts{color:var(--text-3);font-variant-numeric:tabular-nums}
+.ev-body{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ev-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:1px 6px;border-radius:3px}
+.ev-tag.triggered{background:var(--red-dim);color:var(--red)}
+.ev-tag.restored{background:var(--green-dim);color:var(--green)}
+.ev-tag.created,.ev-tag.updated,.ev-tag.deleted{background:var(--blue-dim);color:var(--blue)}
+.ev-rule{font-weight:600;color:var(--text)}
+.ev-detail{color:var(--text-2)}
+.events-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
+
+/* Reports */
+.report-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.report-stat{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;text-align:center}
+.report-stat .rs-val{font-size:22px;font-weight:700;line-height:1.2}
+.report-stat .rs-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.report-bars{margin-top:12px}
+.report-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.report-bar-label{width:80px;text-align:right;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.report-bar-track{flex:1;height:16px;background:var(--bg);border-radius:3px;overflow:hidden;position:relative}
+.report-bar-fill{height:100%;background:var(--blue);border-radius:3px;transition:width .3s}
+.report-bar-val{font-size:11px;color:var(--text-2);width:60px;text-align:right;flex-shrink:0}
+.report-week{font-size:12px;color:var(--text-3);margin-bottom:8px}
+.report-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    CyberPDU
+  </div>
+  <div class="header-device">
+    <span id="device-name">--</span>
+    <code id="device-id">--</code>
+    <span class="conn-label">API</span>
+    <span class="conn-dot err" id="conn-dot" title="Disconnected"></span>
+    <span class="conn-label">MQTT</span>
+    <span class="conn-dot err" id="mqtt-dot" title="MQTT Disconnected"></span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ATS Transfer Switch Panel -->
+  <div class="section">
+    <div class="ats-panel normal" id="ats-panel">
+      <div class="ats-header">
+        <div class="ats-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          AUTOMATIC TRANSFER SWITCH
+        </div>
+        <div class="ats-status-text" id="ats-status-text">NORMAL</div>
+      </div>
+
+      <div class="ats-body">
+        <!-- Left: Inputs -->
+        <div class="ats-col">
+          <div class="ats-col-label">Sources</div>
+          <div class="ats-input-block" id="ats-input-a">
+            <div class="inp-label"><span class="inp-tag inp-tag-a">A</span> Input A &mdash; Utility</div>
+            <div class="inp-voltage" id="inp-a-voltage">--</div>
+            <div class="inp-sub" id="inp-a-sub"><span class="inp-status-dot"></span><span class="inp-sub-text">--</span></div>
+            <div class="inp-metrics">
+              <div class="inp-metric"><div class="im-val" id="inp-a-current">--</div><div class="im-lbl">Amps</div></div>
+              <div class="inp-metric"><div class="im-val" id="inp-a-power">--</div><div class="im-lbl">Watts</div></div>
+              <div class="inp-metric"><div class="im-val" id="inp-a-pf">--</div><div class="im-lbl">PF</div></div>
+            </div>
+          </div>
+          <div class="ats-input-block" id="ats-input-b">
+            <div class="inp-label"><span class="inp-tag inp-tag-b">B</span> Input B &mdash; Backup</div>
+            <div class="inp-voltage" id="inp-b-voltage">--</div>
+            <div class="inp-sub" id="inp-b-sub"><span class="inp-status-dot"></span><span class="inp-sub-text">--</span></div>
+            <div class="inp-metrics">
+              <div class="inp-metric"><div class="im-val" id="inp-b-current">--</div><div class="im-lbl">Amps</div></div>
+              <div class="inp-metric"><div class="im-val" id="inp-b-power">--</div><div class="im-lbl">Watts</div></div>
+              <div class="inp-metric"><div class="im-val" id="inp-b-pf">--</div><div class="im-lbl">PF</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: Flow Diagram -->
+        <div class="ats-flow">
+          <svg id="ats-svg" viewBox="0 0 200 180" xmlns="http://www.w3.org/2000/svg">
+            <line id="path-a-in" x1="0" y1="50" x2="70" y2="50" stroke="#363c50" stroke-width="3" stroke-dasharray="6,4"/>
+            <line id="path-b-in" x1="0" y1="130" x2="70" y2="130" stroke="#363c50" stroke-width="3" stroke-dasharray="6,4"/>
+            <rect x="70" y="30" width="60" height="120" rx="8" fill="#141820" stroke="#363c50" stroke-width="2" id="ats-box"/>
+            <text x="100" y="88" text-anchor="middle" font-size="10" font-weight="700" fill="#565b6e" letter-spacing="1">ATS</text>
+            <line id="switch-arm-a" x1="82" y1="50" x2="118" y2="90" stroke="#363c50" stroke-width="3" stroke-linecap="round"/>
+            <line id="switch-arm-b" x1="82" y1="130" x2="118" y2="90" stroke="#363c50" stroke-width="3" stroke-linecap="round" opacity="0"/>
+            <circle id="dot-a" cx="82" cy="50" r="4" fill="#363c50"/>
+            <circle id="dot-b" cx="82" cy="130" r="4" fill="#363c50"/>
+            <circle id="dot-out" cx="118" cy="90" r="4" fill="#363c50"/>
+            <line id="path-out" x1="130" y1="90" x2="200" y2="90" stroke="#363c50" stroke-width="3" stroke-dasharray="6,4"/>
+            <text x="10" y="44" font-size="10" font-weight="700" fill="#565b6e">A</text>
+            <text x="10" y="124" font-size="10" font-weight="700" fill="#565b6e">B</text>
+            <text x="175" y="84" font-size="10" font-weight="700" fill="#565b6e">OUT</text>
+            <polygon id="arrow-a" points="65,46 70,50 65,54" fill="#363c50" opacity="0"/>
+            <polygon id="arrow-b" points="65,126 70,130 65,134" fill="#363c50" opacity="0"/>
+            <polygon id="arrow-out" points="190,86 195,90 190,94" fill="#363c50" opacity="0"/>
+          </svg>
+        </div>
+
+        <!-- Right: Output -->
+        <div class="ats-col">
+          <div class="ats-col-label">Output Bus</div>
+          <div class="ats-output-block" id="ats-output">
+            <div class="out-label">AC Output</div>
+            <div class="ats-output-stats">
+              <div class="out-stat"><div class="os-val" id="out-voltage">--</div><div class="os-lbl">Volts</div></div>
+              <div class="out-stat"><div class="os-val" id="out-freq">--</div><div class="os-lbl">Hz</div></div>
+              <div class="out-stat"><div class="os-val" id="out-power">--</div><div class="os-lbl">Watts</div></div>
+              <div class="out-stat"><div class="os-val" id="out-current">--</div><div class="os-lbl">Amps</div></div>
+            </div>
+          </div>
+          <div class="ats-output-block">
+            <div class="out-label">Status</div>
+            <div class="ats-output-stats">
+              <div class="out-stat"><div class="os-val" id="out-active">--</div><div class="os-lbl">Active</div></div>
+              <div class="out-stat"><div class="os-val" id="out-total">--</div><div class="os-lbl">Outlets</div></div>
+              <div class="out-stat"><div class="os-val" id="out-source">--</div><div class="os-lbl">Source</div></div>
+              <div class="out-stat"><div class="os-val" id="out-auto">--</div><div class="os-lbl">Auto</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LED Bar -->
+      <div class="ats-leds">
+        <div class="led"><div class="led-bulb off" id="led-a-status"></div><div class="led-label">A Status</div></div>
+        <div class="led"><div class="led-bulb off" id="led-a-selected"></div><div class="led-label">A Selected</div></div>
+        <div class="led"><div class="led-bulb off" id="led-output"></div><div class="led-label">Output</div></div>
+        <div class="led"><div class="led-bulb off" id="led-b-selected"></div><div class="led-label">B Selected</div></div>
+        <div class="led"><div class="led-bulb off" id="led-b-status"></div><div class="led-label">B Status</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Outlets -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Outlets</span>
+    </div>
+    <div class="outlets-grid" id="outlets-grid"></div>
+  </div>
+
+  <!-- History Charts -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">History</span>
+      <div class="chart-controls">
+        <button class="range-btn active" data-range="1h" onclick="setChartRange('1h',this)">1H</button>
+        <button class="range-btn" data-range="6h" onclick="setChartRange('6h',this)">6H</button>
+        <button class="range-btn" data-range="24h" onclick="setChartRange('24h',this)">24H</button>
+        <button class="range-btn" data-range="7d" onclick="setChartRange('7d',this)">7D</button>
+        <button class="range-btn" data-range="30d" onclick="setChartRange('30d',this)">30D</button>
+        <button class="btn-sm export-btn" onclick="exportCSV()">Export CSV</button>
+      </div>
+    </div>
+    <div class="charts-wrap">
+      <div class="chart-card wide">
+        <div class="chart-label">Total Power (W)</div>
+        <canvas id="chart-power"></canvas>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-label">Input Voltage (V)</div>
+          <canvas id="chart-voltage"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-label">Current (A)</div>
+          <canvas id="chart-current"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Automation Rules -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Automation Rules</span>
+      <button class="btn-add" onclick="toggleForm()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Rule</button>
+    </div>
+    <div class="rule-form-wrap" id="rule-form-wrap">
+      <div class="rule-form-title">
+        <span id="form-title">New Rule</span>
+        <button class="btn-sm" onclick="closeForm()">&times;</button>
+      </div>
+      <form class="rule-form" id="rule-form" onsubmit="return submitRule(event)">
+        <div class="field"><label>Name</label><input id="f-name" required pattern="[a-zA-Z0-9_-]+" placeholder="ecoflow_anti_feedback"></div>
+        <div class="field"><label>Input</label><select id="f-input"><option value="1">Input A (1)</option><option value="2">Input B (2)</option><option value="0">N/A (time)</option></select></div>
+        <div class="field">
+          <label>Condition</label>
+          <select id="f-condition" onchange="updateThresholdHint()">
+            <option value="voltage_below">Voltage Below</option>
+            <option value="voltage_above">Voltage Above</option>
+            <option value="ats_preferred_lost">ATS Preferred Lost</option>
+            <option value="ats_source_is">ATS Source Is</option>
+            <option value="time_after">Time After</option>
+            <option value="time_before">Time Before</option>
+            <option value="time_between">Time Between</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Threshold</label>
+          <input id="f-threshold" type="text" value="10" required>
+          <div class="threshold-hint" id="threshold-hint"></div>
+        </div>
+        <div class="field"><label>Target Outlet</label><input id="f-outlet" type="number" min="1" max="10" value="1" required></div>
+        <div class="field"><label>Action</label><select id="f-action"><option value="off">Turn OFF</option><option value="on">Turn ON</option></select></div>
+        <div class="field"><label>Delay (sec)</label><input id="f-delay" type="number" min="0" value="5" required></div>
+        <div class="field-check"><input id="f-restore" type="checkbox" checked><label for="f-restore">Restore on recovery</label></div>
+        <div class="form-btns">
+          <button type="submit" class="btn btn-primary" id="form-submit">Create Rule</button>
+          <button type="button" class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <table class="rules-table">
+        <thead><tr><th>Rule</th><th>Condition</th><th>Target</th><th>Delay</th><th>Status</th><th></th></tr></thead>
+        <tbody id="rules-body"><tr><td colspan="6" class="rules-empty">No automation rules configured</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Energy Reports -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Energy Report</span>
+    </div>
+    <div class="card">
+      <div class="card-body" id="report-content">
+        <div class="report-empty">No reports generated yet. Reports are generated weekly.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Events -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Event Log</span>
+    </div>
+    <div class="card">
+      <div class="events-list" id="events-list">
+        <div class="events-empty">No events recorded</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let editingRule = null;
+let activeOutlet = null;
+let editingOutletName = null;
+let chartRange = '1h';
+let chartTimer = null;
+
+const GREEN = '#00dc82';
+const RED = '#ff4757';
+const GRAY = '#363c50';
+const DIM_GRAY = '#2a2e3c';
+const STANDBY_OK = '#3d6b55';
+const BLUE = '#0078ff';
+const AMBER = '#ffad20';
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function fmt(v, d=1) { return v != null ? Number(v).toFixed(d) : '--'; }
+function fmtInt(v) { return v != null ? Math.round(v).toLocaleString() : '--'; }
+function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
+function esc(s) { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; }
+
+// --- ATS Flow Diagram ---
+function updateATSDiagram(ats, summary, inputs) {
+  const current = ats.current_source;
+  const preferred = ats.preferred_source;
+  const transferred = ats.transferred;
+  const busVoltage = summary.input_voltage;
+  const busOk = busVoltage != null && busVoltage > 10;
+
+  const srcA = ats.source_a || {};
+  const srcB = ats.source_b || {};
+  const bankA = inputs['1'] || {};
+  const bankB = inputs['2'] || {};
+
+  const aIsActive = current === 1;
+  const bIsActive = current === 2;
+  const aVolOk = srcA.voltage_status === 'normal';
+  const bVolOk = srcB.voltage_status === 'normal';
+  const aIsDead = !aVolOk && srcA.voltage_status !== 'unknown';
+  const bIsDead = !bVolOk && srcB.voltage_status !== 'unknown';
+  const aIsStandbyOk = !aIsActive && aVolOk;
+  const bIsStandbyOk = !bIsActive && bVolOk;
+
+  function setInput(prefix, src, bank, isActive, isDead, isStandbyOk) {
+    const block = document.getElementById('ats-input-' + prefix);
+    const voltEl = document.getElementById('inp-' + prefix + '-voltage');
+    const subEl = document.getElementById('inp-' + prefix + '-sub');
+    const curEl = document.getElementById('inp-' + prefix + '-current');
+    const powEl = document.getElementById('inp-' + prefix + '-power');
+    const pfEl = document.getElementById('inp-' + prefix + '-pf');
+    const volts = src.voltage;
+    voltEl.textContent = volts != null ? volts.toFixed(1) + 'V' : '--';
+    if (isActive && !isDead) {
+      block.className = 'ats-input-block active';
+      subEl.querySelector('.inp-sub-text').textContent = 'Active';
+    } else if (isDead) {
+      block.className = 'ats-input-block dead';
+      subEl.querySelector('.inp-sub-text').textContent = 'FAILED';
+    } else if (isStandbyOk) {
+      block.className = 'ats-input-block standby-ok';
+      subEl.querySelector('.inp-sub-text').textContent = 'Standby \u2014 OK';
+    } else {
+      block.className = 'ats-input-block standby-unknown';
+      subEl.querySelector('.inp-sub-text').textContent = 'Standby';
+    }
+    curEl.textContent = fmt(bank.current);
+    powEl.textContent = fmtInt(bank.power);
+    pfEl.textContent = fmt(bank.power_factor, 2);
+  }
+  setInput('a', srcA, bankA, aIsActive, aIsDead, aIsStandbyOk);
+  setInput('b', srcB, bankB, bIsActive, bIsDead, bIsStandbyOk);
+
+  const activeColor = GREEN;
+  const deadColor = RED;
+  const pathA = document.getElementById('path-a-in');
+  const pathB = document.getElementById('path-b-in');
+  const pathOut = document.getElementById('path-out');
+  const armA = document.getElementById('switch-arm-a');
+  const armB = document.getElementById('switch-arm-b');
+  const dotA = document.getElementById('dot-a');
+  const dotB = document.getElementById('dot-b');
+  const dotOut = document.getElementById('dot-out');
+  const arrowA = document.getElementById('arrow-a');
+  const arrowB = document.getElementById('arrow-b');
+  const arrowOut = document.getElementById('arrow-out');
+  const atsBox = document.getElementById('ats-box');
+
+  [pathA, pathB, pathOut, armA, armB].forEach(el => {
+    el.setAttribute('stroke', GRAY); el.setAttribute('stroke-dasharray', '6,4'); el.setAttribute('opacity', '1');
+  });
+  [dotA, dotB, dotOut].forEach(el => el.setAttribute('fill', GRAY));
+  [arrowA, arrowB, arrowOut].forEach(el => el.setAttribute('opacity', '0'));
+  atsBox.setAttribute('stroke', GRAY);
+
+  if (aIsActive) {
+    pathA.setAttribute('stroke', activeColor); pathA.removeAttribute('stroke-dasharray');
+    armA.setAttribute('stroke', activeColor); armA.removeAttribute('stroke-dasharray');
+    armA.setAttribute('opacity', '1'); armB.setAttribute('opacity', '0');
+    dotA.setAttribute('fill', activeColor); dotOut.setAttribute('fill', activeColor);
+    arrowA.setAttribute('fill', activeColor); arrowA.setAttribute('opacity', '1');
+    atsBox.setAttribute('stroke', activeColor);
+    if (bIsDead) { pathB.setAttribute('stroke', deadColor); dotB.setAttribute('fill', deadColor); }
+    else if (bIsStandbyOk) { pathB.setAttribute('stroke', STANDBY_OK); dotB.setAttribute('fill', STANDBY_OK); }
+    else { pathB.setAttribute('stroke', DIM_GRAY); dotB.setAttribute('fill', DIM_GRAY); }
+  } else if (bIsActive) {
+    pathB.setAttribute('stroke', activeColor); pathB.removeAttribute('stroke-dasharray');
+    armB.setAttribute('stroke', activeColor); armB.removeAttribute('stroke-dasharray');
+    armB.setAttribute('opacity', '1'); armA.setAttribute('opacity', '0');
+    dotB.setAttribute('fill', activeColor); dotOut.setAttribute('fill', activeColor);
+    arrowB.setAttribute('fill', activeColor); arrowB.setAttribute('opacity', '1');
+    atsBox.setAttribute('stroke', activeColor);
+    if (aIsDead) { pathA.setAttribute('stroke', deadColor); dotA.setAttribute('fill', deadColor); }
+    else if (aIsStandbyOk) { pathA.setAttribute('stroke', STANDBY_OK); dotA.setAttribute('fill', STANDBY_OK); }
+    else { pathA.setAttribute('stroke', DIM_GRAY); dotA.setAttribute('fill', DIM_GRAY); }
+  }
+  if (busOk) {
+    pathOut.setAttribute('stroke', activeColor); pathOut.removeAttribute('stroke-dasharray');
+    arrowOut.setAttribute('fill', activeColor); arrowOut.setAttribute('opacity', '1');
+  }
+
+  const outBlock = document.getElementById('ats-output');
+  outBlock.className = 'ats-output-block' + (busOk ? ' healthy' : '');
+
+  const panel = document.getElementById('ats-panel');
+  const statusText = document.getElementById('ats-status-text');
+  const degraded = transferred || aIsDead || bIsDead || ats.redundancy_ok === false;
+  if (degraded) {
+    panel.className = 'ats-panel degraded';
+    if (transferred) statusText.textContent = 'TRANSFERRED';
+    else if (aIsDead || bIsDead) statusText.textContent = 'REDUNDANCY LOST';
+    else statusText.textContent = 'DEGRADED';
+  } else {
+    panel.className = 'ats-panel normal';
+    statusText.textContent = 'NORMAL';
+  }
+
+  setLed('led-a-status', aVolOk ? 'green' : aIsDead ? 'red' : 'gray');
+  setLed('led-b-status', bVolOk ? 'green' : bIsDead ? 'red' : 'gray');
+  setLed('led-a-selected', aIsActive ? 'green' : 'off');
+  setLed('led-b-selected', bIsActive ? 'green' : 'off');
+  setLed('led-output', busOk ? 'green' : 'red');
+}
+
+function setLed(id, state) { document.getElementById(id).className = 'led-bulb ' + state; }
+
+// --- Polling ---
+async function poll() {
+  try {
+    const [status, rules, events] = await Promise.all([
+      api('/api/status'), api('/api/rules'), api('/api/events'),
+    ]);
+    if (!status.error) {
+      renderStatus(status);
+      document.getElementById('conn-dot').className = 'conn-dot ok';
+      document.getElementById('conn-dot').title = 'Connected';
+      // MQTT status
+      if (status.mqtt) {
+        const mqDot = document.getElementById('mqtt-dot');
+        mqDot.className = 'conn-dot ' + (status.mqtt.connected ? 'ok' : 'err');
+        mqDot.title = status.mqtt.connected ? 'MQTT Connected' : 'MQTT Disconnected';
+      }
+    }
+    renderRules(rules);
+    renderEvents(events);
+  } catch (e) {
+    document.getElementById('conn-dot').className = 'conn-dot err';
+    document.getElementById('conn-dot').title = 'Disconnected';
+  }
+}
+
+function renderStatus(s) {
+  document.getElementById('device-name').textContent = s.device.name;
+  document.getElementById('device-id').textContent = s.device.id;
+  updateATSDiagram(s.ats, s.summary, s.inputs);
+
+  document.getElementById('out-voltage').textContent = fmt(s.summary.input_voltage);
+  document.getElementById('out-freq').textContent = fmt(s.summary.input_frequency);
+  document.getElementById('out-power').textContent = fmtInt(s.summary.total_power);
+
+  let totalCurrent = null;
+  for (const idx of Object.keys(s.inputs)) {
+    const inp = s.inputs[idx];
+    if (inp.current != null && inp.current > 0) totalCurrent = (totalCurrent || 0) + inp.current;
+  }
+  document.getElementById('out-current').textContent = fmt(totalCurrent);
+  document.getElementById('out-active').textContent = s.summary.active_outlets;
+  document.getElementById('out-total').textContent = s.summary.total_outlets;
+  document.getElementById('out-source').textContent = s.ats.current_label || '--';
+  document.getElementById('out-auto').textContent = s.ats.auto_transfer ? 'ON' : 'OFF';
+
+  renderOutlets(s.outlets);
+}
+
+function renderOutlets(outlets) {
+  const grid = document.getElementById('outlets-grid');
+  const nums = Object.keys(outlets).map(Number).sort((a,b) => a-b);
+  grid.innerHTML = nums.map(n => {
+    const o = outlets[String(n)];
+    const isActive = activeOutlet === n;
+    const powerStr = o.power != null ? Math.round(o.power) + 'W' : '';
+    const isEditing = editingOutletName === n;
+    const nameHtml = isEditing
+      ? `<input class="o-name-input" id="o-name-input-${n}" value="${esc(o.name)}" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')saveOutletName(${n})" onblur="saveOutletName(${n})">`
+      : `<span>${esc(o.name)}</span>`;
+    return `<div class="outlet-tile ${o.state}${isActive ? ' active' : ''}" onclick="toggleOutletMenu(event,${n})">
+      <div class="o-num">${n} <button class="o-edit-btn" onclick="event.stopPropagation();startRenameOutlet(${n})" title="Rename">&#9998;</button></div>
+      <div class="o-name">${nameHtml}</div>
+      <div class="o-state"><span class="o-dot"></span>${o.state}</div>
+      ${powerStr ? `<div class="o-power">${powerStr}</div>` : ''}
+      <div class="outlet-pop">
+        <button class="pop-btn on" onclick="outletCmd(event,${n},'on')">ON</button>
+        <button class="pop-btn off" onclick="outletCmd(event,${n},'off')">OFF</button>
+        <button class="pop-btn reboot" onclick="outletCmd(event,${n},'reboot')">Reboot</button>
+      </div>
+    </div>`;
+  }).join('');
+  // Focus rename input if editing
+  if (editingOutletName != null) {
+    const inp = document.getElementById('o-name-input-' + editingOutletName);
+    if (inp) { inp.focus(); inp.select(); }
+  }
+}
+
+function startRenameOutlet(n) {
+  editingOutletName = n;
+  poll();
+}
+
+async function saveOutletName(n) {
+  const inp = document.getElementById('o-name-input-' + n);
+  if (!inp) return;
+  editingOutletName = null;
+  const name = inp.value.trim();
+  await api(`/api/outlets/${n}/name`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name}),
+  });
+  poll();
+}
+
+function toggleOutletMenu(e, n) {
+  if (e.target.closest('.pop-btn') || e.target.closest('.o-edit-btn') || e.target.closest('.o-name-input')) return;
+  activeOutlet = activeOutlet === n ? null : n;
+  const tiles = document.querySelectorAll('.outlet-tile');
+  tiles.forEach(t => {
+    const num = parseInt(t.querySelector('.o-num').textContent);
+    t.classList.toggle('active', num === activeOutlet);
+  });
+}
+
+async function outletCmd(e, n, action) {
+  e.stopPropagation();
+  activeOutlet = null;
+  await api(`/api/outlets/${n}/command`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action}),
+  });
+  setTimeout(poll, 300);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.outlet-tile')) {
+    activeOutlet = null;
+    document.querySelectorAll('.outlet-tile.active').forEach(t => t.classList.remove('active'));
+  }
+});
+
+// --- Charts ---
+function drawChart(canvas, data, valueKey, color, unit) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {top: 10, right: 10, bottom: 20, left: 50};
+  const cw = W - pad.left - pad.right, ch = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (!data || !data.length) {
+    ctx.fillStyle = '#565b6e';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data', W/2, H/2);
+    return;
+  }
+
+  // Aggregate by bucket timestamp (sum banks for power/current)
+  const buckets = new Map();
+  data.forEach(d => {
+    const t = d.bucket;
+    if (!buckets.has(t)) buckets.set(t, 0);
+    const v = d[valueKey];
+    if (v != null) buckets.set(t, buckets.get(t) + v);
+  });
+
+  const points = Array.from(buckets.entries()).sort((a,b) => a[0]-b[0]);
+  if (!points.length) {
+    ctx.fillStyle = '#565b6e'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('No data', W/2, H/2);
+    return;
+  }
+
+  const vals = points.map(p => p[1]);
+  let minV = Math.min(...vals), maxV = Math.max(...vals);
+  if (maxV === minV) { minV -= 1; maxV += 1; }
+  const rangeV = maxV - minV;
+  const minT = points[0][0], maxT = points[points.length-1][0];
+  const rangeT = maxT - minT || 1;
+
+  function x(t) { return pad.left + ((t - minT) / rangeT) * cw; }
+  function y(v) { return pad.top + ch - ((v - minV) / rangeV) * ch; }
+
+  // Grid lines
+  ctx.strokeStyle = '#1c2030';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const gy = pad.top + (ch / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(W - pad.right, gy); ctx.stroke();
+    const gv = maxV - (rangeV / 4) * i;
+    ctx.fillStyle = '#565b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(gv.toFixed(gv >= 100 ? 0 : 1), pad.left - 4, gy + 3);
+  }
+
+  // Time labels
+  ctx.fillStyle = '#565b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const labelCount = Math.min(6, points.length);
+  for (let i = 0; i < labelCount; i++) {
+    const idx = Math.floor(i * (points.length - 1) / Math.max(labelCount - 1, 1));
+    const t = points[idx][0];
+    const d = new Date(t * 1000);
+    const label = rangeT > 86400
+      ? (d.getMonth()+1) + '/' + d.getDate()
+      : d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    ctx.fillText(label, x(t), H - 4);
+  }
+
+  // Line
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(x(p[0]), y(p[1]));
+    else ctx.lineTo(x(p[0]), y(p[1]));
+  });
+  ctx.stroke();
+
+  // Fill area
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = color;
+  ctx.lineTo(x(points[points.length-1][0]), pad.top + ch);
+  ctx.lineTo(x(points[0][0]), pad.top + ch);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+async function loadCharts() {
+  try {
+    const data = await api(`/api/history/banks?range=${chartRange}`);
+    drawChart(document.getElementById('chart-power'), data, 'power', GREEN, 'W');
+    drawChart(document.getElementById('chart-voltage'), data, 'voltage', BLUE, 'V');
+    drawChart(document.getElementById('chart-current'), data, 'current', AMBER, 'A');
+  } catch (e) {
+    // Charts will show "No data" from empty draw
+  }
+}
+
+function setChartRange(range, btn) {
+  chartRange = range;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadCharts();
+}
+
+function exportCSV() {
+  window.open(`/api/history/banks.csv?range=${chartRange}`, '_blank');
+}
+
+// --- Rules ---
+function renderRules(rules) {
+  const tbody = document.getElementById('rules-body');
+  if (!rules || !rules.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="rules-empty">No automation rules configured</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rules.map(r => {
+    let bclass = 'armed', blabel = 'Armed';
+    if (r.state.triggered) { bclass = 'triggered'; blabel = 'Triggered'; }
+    else if (r.state.condition_since) { bclass = 'pending'; blabel = 'Pending'; }
+
+    let condText = '';
+    if (r.condition === 'voltage_below') condText = `Input ${r.input} voltage &lt; ${r.threshold}V`;
+    else if (r.condition === 'voltage_above') condText = `Input ${r.input} voltage &gt; ${r.threshold}V`;
+    else if (r.condition === 'ats_preferred_lost') condText = 'ATS preferred source lost';
+    else if (r.condition === 'ats_source_is') condText = `ATS source = ${r.threshold == 1 ? 'A' : 'B'}`;
+    else if (r.condition === 'time_after') condText = `After ${r.threshold}`;
+    else if (r.condition === 'time_before') condText = `Before ${r.threshold}`;
+    else if (r.condition === 'time_between') condText = `Between ${r.threshold}`;
+    else condText = `${r.condition} ${r.threshold}`;
+
+    const restoreTag = r.restore ? ', restore' : '';
+    return `<tr>
+      <td><strong>${esc(r.name)}</strong></td>
+      <td><span class="rule-condition">${condText}</span></td>
+      <td>Outlet ${r.outlet} &rarr; <strong>${r.action.toUpperCase()}</strong>${restoreTag}</td>
+      <td>${r.delay}s</td>
+      <td><span class="badge badge-${bclass}">${blabel}</span></td>
+      <td><div class="rule-actions">
+        <button class="btn-sm" onclick="startEdit('${esc(r.name)}')">Edit</button>
+        <button class="btn-sm danger" onclick="deleteRule('${esc(r.name)}')">Delete</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// --- Events ---
+function renderEvents(events) {
+  const el = document.getElementById('events-list');
+  if (!events || !events.length) {
+    el.innerHTML = '<div class="events-empty">No events recorded</div>';
+    return;
+  }
+  el.innerHTML = events.slice(0, 50).map(e =>
+    `<div class="ev-item">
+      <span class="ev-ts">${fmtTime(e.ts)}</span>
+      <span class="ev-body">
+        <span class="ev-tag ${e.type}">${e.type}</span>
+        <span class="ev-rule">${esc(e.rule)}</span>
+        <span class="ev-detail">${esc(e.details)}</span>
+      </span>
+    </div>`
+  ).join('');
+}
+
+// --- Reports ---
+async function loadReport() {
+  try {
+    const report = await api('/api/reports/latest');
+    if (report.error) {
+      document.getElementById('report-content').innerHTML = '<div class="report-empty">No reports generated yet. Reports are generated weekly.</div>';
+      return;
+    }
+    const d = report.data;
+    let html = `<div class="report-week">Week of ${d.week_start} to ${d.week_end}</div>`;
+    html += '<div class="report-summary">';
+    html += `<div class="report-stat"><div class="rs-val">${d.total_kwh.toFixed(1)}</div><div class="rs-lbl">kWh Total</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val">${Math.round(d.avg_power_w)}</div><div class="rs-lbl">Avg Watts</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val">${Math.round(d.peak_power_w)}</div><div class="rs-lbl">Peak Watts</div></div>`;
+    if (d.house_pct != null) {
+      html += `<div class="report-stat"><div class="rs-val">${d.house_pct}%</div><div class="rs-lbl">Of House</div></div>`;
+    }
+    html += '</div>';
+
+    // Per-outlet bars
+    if (d.per_outlet && Object.keys(d.per_outlet).length) {
+      const entries = Object.entries(d.per_outlet).sort((a,b) => b[1].kwh - a[1].kwh);
+      const maxKwh = Math.max(...entries.map(e => e[1].kwh), 0.01);
+      html += '<div class="report-bars">';
+      entries.forEach(([o, info]) => {
+        const pct = Math.round((info.kwh / maxKwh) * 100);
+        html += `<div class="report-bar-row">
+          <span class="report-bar-label">Outlet ${esc(o)}</span>
+          <div class="report-bar-track"><div class="report-bar-fill" style="width:${pct}%"></div></div>
+          <span class="report-bar-val">${info.kwh.toFixed(1)} kWh</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    document.getElementById('report-content').innerHTML = html;
+  } catch (e) {
+    // keep existing content
+  }
+}
+
+// --- Rule Form ---
+function updateThresholdHint() {
+  const cond = document.getElementById('f-condition').value;
+  const hint = document.getElementById('threshold-hint');
+  const thInput = document.getElementById('f-threshold');
+  const inputField = document.getElementById('f-input');
+
+  if (cond === 'ats_source_is') {
+    hint.classList.add('visible');
+    hint.textContent = '1 = Source A, 2 = Source B';
+    thInput.type = 'text'; thInput.value = thInput.value || '1';
+    inputField.parentElement.style.display = '';
+  } else if (cond === 'ats_preferred_lost') {
+    hint.classList.add('visible');
+    hint.textContent = 'Threshold ignored for this condition';
+    thInput.type = 'text';
+    inputField.parentElement.style.display = '';
+  } else if (cond === 'time_after' || cond === 'time_before') {
+    hint.classList.add('visible');
+    hint.textContent = 'Format: HH:MM (e.g., 22:00)';
+    thInput.type = 'text'; thInput.value = thInput.value.includes(':') ? thInput.value : '22:00';
+    inputField.value = '0';
+    inputField.parentElement.style.display = 'none';
+  } else if (cond === 'time_between') {
+    hint.classList.add('visible');
+    hint.textContent = 'Format: HH:MM-HH:MM (e.g., 22:00-06:00)';
+    thInput.type = 'text'; thInput.value = thInput.value.includes('-') ? thInput.value : '22:00-06:00';
+    inputField.value = '0';
+    inputField.parentElement.style.display = 'none';
+  } else {
+    hint.classList.remove('visible');
+    thInput.type = 'text';
+    inputField.parentElement.style.display = '';
+  }
+}
+
+function toggleForm() {
+  const wrap = document.getElementById('rule-form-wrap');
+  if (wrap.classList.contains('open') && !editingRule) { closeForm(); return; }
+  editingRule = null;
+  document.getElementById('rule-form').reset();
+  document.getElementById('f-restore').checked = true;
+  document.getElementById('f-name').readOnly = false;
+  document.getElementById('f-input').parentElement.style.display = '';
+  document.getElementById('form-title').textContent = 'New Rule';
+  document.getElementById('form-submit').textContent = 'Create Rule';
+  updateThresholdHint();
+  wrap.classList.add('open');
+}
+
+function closeForm() {
+  editingRule = null;
+  document.getElementById('rule-form-wrap').classList.remove('open');
+  document.getElementById('rule-form').reset();
+  document.getElementById('f-restore').checked = true;
+  document.getElementById('f-name').readOnly = false;
+  document.getElementById('f-input').parentElement.style.display = '';
+  updateThresholdHint();
+}
+
+function getFormData() {
+  const cond = document.getElementById('f-condition').value;
+  const isTime = cond.startsWith('time_');
+  const thVal = document.getElementById('f-threshold').value.trim();
+  return {
+    name: document.getElementById('f-name').value.trim(),
+    input: parseInt(document.getElementById('f-input').value),
+    condition: cond,
+    threshold: isTime ? thVal : parseFloat(thVal),
+    outlet: parseInt(document.getElementById('f-outlet').value),
+    action: document.getElementById('f-action').value,
+    delay: parseInt(document.getElementById('f-delay').value),
+    restore: document.getElementById('f-restore').checked,
+  };
+}
+
+async function submitRule(e) {
+  e.preventDefault();
+  const data = getFormData();
+  try {
+    if (editingRule) {
+      const r = await api(`/api/rules/${encodeURIComponent(editingRule)}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
+      });
+      if (r.error) { alert(r.error); return false; }
+    } else {
+      const r = await api('/api/rules', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
+      });
+      if (r.error) { alert(r.error); return false; }
+    }
+    closeForm();
+    poll();
+  } catch (err) { alert('Error: ' + err.message); }
+  return false;
+}
+
+async function startEdit(name) {
+  const rules = await api('/api/rules');
+  const r = rules.find(x => x.name === name);
+  if (!r) return;
+  editingRule = name;
+  document.getElementById('f-name').value = r.name;
+  document.getElementById('f-name').readOnly = true;
+  document.getElementById('f-input').value = r.input;
+  document.getElementById('f-condition').value = r.condition;
+  document.getElementById('f-threshold').value = r.threshold;
+  document.getElementById('f-outlet').value = r.outlet;
+  document.getElementById('f-action').value = r.action;
+  document.getElementById('f-delay').value = r.delay;
+  document.getElementById('f-restore').checked = r.restore;
+  document.getElementById('form-title').textContent = 'Edit Rule';
+  document.getElementById('form-submit').textContent = 'Update Rule';
+  updateThresholdHint();
+  document.getElementById('rule-form-wrap').classList.add('open');
+}
+
+async function deleteRule(name) {
+  if (!confirm('Delete rule "' + name + '"?')) return;
+  await api('/api/rules/' + encodeURIComponent(name), { method: 'DELETE' });
+  poll();
+}
+
+// --- Init ---
+setInterval(poll, 2000);
+poll();
+
+// Charts refresh every 60s
+loadCharts();
+chartTimer = setInterval(loadCharts, 60000);
+
+// Load report on start
+loadReport();
+</script>
+</body>
+</html>
