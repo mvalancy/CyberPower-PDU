@@ -1,7 +1,13 @@
+# CyberPower PDU Bridge
+# Created by Matthew Valancy, Valpatel Software LLC
+# Copyright 2026 MIT License
+# https://github.com/mvalancy/CyberPower-PDU
+
 """Automation engine — input-failure outlet control rules."""
 
 import json
 import logging
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,6 +17,13 @@ from typing import Any
 from .pdu_model import PDUData
 
 logger = logging.getLogger(__name__)
+
+VALID_CONDITIONS = frozenset({
+    "voltage_below", "voltage_above",
+    "ats_source_is", "ats_preferred_lost",
+    "time_after", "time_before", "time_between",
+})
+VALID_ACTIONS = frozenset({"on", "off"})
 
 
 @dataclass
@@ -39,21 +52,58 @@ class AutomationRule:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AutomationRule":
         condition = d["condition"]
+        if condition not in VALID_CONDITIONS:
+            raise ValueError(f"Unknown condition: {condition!r}")
+
+        action = d["action"]
+        if action not in VALID_ACTIONS:
+            raise ValueError(f"Invalid action: {action!r} (must be 'on' or 'off')")
+
         # Time conditions keep threshold as string; voltage conditions as float
         if condition in ("time_after", "time_before", "time_between"):
             threshold = str(d["threshold"])
+            # Validate time format
+            if condition == "time_between":
+                parts = threshold.split("-")
+                if len(parts) != 2:
+                    raise ValueError(f"time_between threshold must be HH:MM-HH:MM, got {threshold!r}")
+                _validate_time_str(parts[0])
+                _validate_time_str(parts[1])
+            else:
+                _validate_time_str(threshold)
+        elif condition in ("ats_source_is",):
+            threshold = int(d["threshold"])
         else:
             threshold = float(d["threshold"])
+
+        outlet = int(d["outlet"])
+        if outlet < 1:
+            raise ValueError(f"Outlet must be >= 1, got {outlet}")
+
         return cls(
             name=d["name"],
             input=int(d.get("input", 0)),
             condition=condition,
             threshold=threshold,
-            outlet=int(d["outlet"]),
-            action=d["action"],
+            outlet=outlet,
+            action=action,
             restore=d.get("restore", True),
             delay=int(d.get("delay", 5)),
         )
+
+
+def _validate_time_str(s: str):
+    """Validate HH:MM format."""
+    s = s.strip()
+    parts = s.split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid time format: {s!r} (expected HH:MM)")
+    try:
+        h, m = int(parts[0]), int(parts[1])
+    except ValueError:
+        raise ValueError(f"Invalid time format: {s!r} (non-numeric)")
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"Invalid time: {s!r} (hour 0-23, minute 0-59)")
 
 
 @dataclass
@@ -81,6 +131,7 @@ class AutomationEngine:
         self._events: list[dict[str, Any]] = []
         self._max_events = 100
         self._command_callback = command_callback
+        self._command_failures = 0
         self._load()
 
     def _load(self):
@@ -88,9 +139,12 @@ class AutomationEngine:
             try:
                 data = json.loads(self._rules_file.read_text())
                 for d in data:
-                    rule = AutomationRule.from_dict(d)
-                    self._rules[rule.name] = rule
-                    self._states[rule.name] = RuleState()
+                    try:
+                        rule = AutomationRule.from_dict(d)
+                        self._rules[rule.name] = rule
+                        self._states[rule.name] = RuleState()
+                    except (KeyError, ValueError, TypeError) as e:
+                        logger.error("Skipping invalid rule %s: %s", d.get("name", "?"), e)
                 logger.info("Loaded %d automation rules from %s",
                             len(self._rules), self._rules_file)
             except Exception:
@@ -99,9 +153,22 @@ class AutomationEngine:
             logger.info("No rules file at %s, starting empty", self._rules_file)
 
     def _save(self):
+        """Save rules atomically using temp file + rename."""
         self._rules_file.parent.mkdir(parents=True, exist_ok=True)
-        data = [r.to_dict() for r in self._rules.values()]
-        self._rules_file.write_text(json.dumps(data, indent=2))
+        data = json.dumps([r.to_dict() for r in self._rules.values()], indent=2)
+        # Write to temp file then rename for atomicity
+        tmp_path = self._rules_file.with_suffix(".tmp")
+        try:
+            tmp_path.write_text(data)
+            tmp_path.rename(self._rules_file)
+        except Exception:
+            logger.exception("Failed to save rules to %s", self._rules_file)
+            # Clean up temp file on failure
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
     def _add_event(self, rule_name: str, event_type: str, details: str):
         event = {
@@ -188,7 +255,12 @@ class AutomationEngine:
 
         for name, rule in self._rules.items():
             state = self._states[name]
-            condition_met = self._check_condition(rule, data)
+
+            try:
+                condition_met = self._check_condition(rule, data)
+            except Exception:
+                logger.exception("Error checking condition for rule '%s'", name)
+                continue
 
             if condition_met and not state.triggered:
                 # Condition just became true or is still pending
@@ -199,35 +271,54 @@ class AutomationEngine:
                 elapsed = now - state.condition_since
                 if elapsed >= rule.delay:
                     # Fire the rule
-                    state.triggered = True
-                    state.fired_at = now
                     event = self._add_event(
                         name, "triggered",
-                        f"Input {rule.input} {rule.condition} {rule.threshold}V "
-                        f"→ outlet {rule.outlet} {rule.action}"
+                        f"Input {rule.input} {rule.condition} {rule.threshold} "
+                        f"-> outlet {rule.outlet} {rule.action}"
                     )
                     new_events.append(event)
-                    logger.warning("Rule '%s' TRIGGERED: outlet %d → %s",
+                    logger.warning("Rule '%s' TRIGGERED: outlet %d -> %s",
                                    name, rule.outlet, rule.action)
                     if self._command_callback:
-                        await self._command_callback(rule.outlet, rule.action)
+                        try:
+                            await self._command_callback(rule.outlet, rule.action)
+                            state.triggered = True
+                            state.fired_at = now
+                        except Exception:
+                            self._command_failures += 1
+                            logger.exception(
+                                "Command failed for rule '%s': outlet %d -> %s",
+                                name, rule.outlet, rule.action,
+                            )
+                            # Reset so we retry next cycle
+                            state.condition_since = None
+                    else:
+                        state.triggered = True
+                        state.fired_at = now
 
             elif not condition_met and state.triggered and rule.restore:
                 # Condition cleared, restore
-                state.triggered = False
-                state.condition_since = None
-                state.fired_at = None
                 restore_action = "on" if rule.action == "off" else "off"
                 event = self._add_event(
                     name, "restored",
                     f"Input {rule.input} recovered "
-                    f"→ outlet {rule.outlet} {restore_action}"
+                    f"-> outlet {rule.outlet} {restore_action}"
                 )
                 new_events.append(event)
-                logger.info("Rule '%s' RESTORED: outlet %d → %s",
+                logger.info("Rule '%s' RESTORED: outlet %d -> %s",
                             name, rule.outlet, restore_action)
                 if self._command_callback:
-                    await self._command_callback(rule.outlet, restore_action)
+                    try:
+                        await self._command_callback(rule.outlet, restore_action)
+                    except Exception:
+                        self._command_failures += 1
+                        logger.exception(
+                            "Restore command failed for rule '%s': outlet %d -> %s",
+                            name, rule.outlet, restore_action,
+                        )
+                state.triggered = False
+                state.condition_since = None
+                state.fired_at = None
 
             elif not condition_met:
                 # Condition not met, reset pending state
