@@ -1,0 +1,82 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -W 3 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USER}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  telegraf:
+    image: telegraf:1.31
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    environment:
+      - TELEGRAF_MQTT_BROKER=${TELEGRAF_MQTT_BROKER}
+      - INFLUXDB_URL=${INFLUXDB_URL}
+      - INFLUXDB_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+    restart: unless-stopped
+
+  bridge:
+    build: ./bridge
+    network_mode: host
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - bridge-data:/data
+    environment:
+      - PDU_HOST=${PDU_HOST}
+      - PDU_SNMP_PORT=${PDU_SNMP_PORT}
+      - PDU_COMMUNITY_READ=${PDU_COMMUNITY_READ}
+      - PDU_COMMUNITY_WRITE=${PDU_COMMUNITY_WRITE}
+      - PDU_DEVICE_ID=${PDU_DEVICE_ID}
+      - MQTT_BROKER=127.0.0.1
+      - MQTT_PORT=1883
+      - BRIDGE_POLL_INTERVAL=${BRIDGE_POLL_INTERVAL}
+      - BRIDGE_MOCK_MODE=${BRIDGE_MOCK_MODE}
+      - BRIDGE_LOG_LEVEL=${BRIDGE_LOG_LEVEL}
+      - BRIDGE_WEB_PORT=${BRIDGE_WEB_PORT:-8080}
+      - BRIDGE_RULES_FILE=/data/rules.json
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  influxdb-data:
+  bridge-data:
