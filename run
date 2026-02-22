@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+if [ ! -f .env ]; then
+    echo "ERROR: .env not found. Run ./setup first."
+    exit 1
+fi
+
+echo "=== Starting CyberPower PDU Stack ==="
+
+docker compose up -d
+
+echo ""
+echo "Waiting for services to be healthy..."
+
+# Wait for mosquitto
+for i in $(seq 1 30); do
+    if docker compose ps mosquitto --format '{{.Health}}' 2>/dev/null | grep -q "healthy"; then
+        echo "✓ Mosquitto ready"
+        break
+    fi
+    [ "$i" -eq 30 ] && echo "⚠ Mosquitto health check timeout"
+    sleep 1
+done
+
+# Wait for influxdb
+for i in $(seq 1 60); do
+    if docker compose ps influxdb --format '{{.Health}}' 2>/dev/null | grep -q "healthy"; then
+        echo "✓ InfluxDB ready"
+        break
+    fi
+    [ "$i" -eq 60 ] && echo "⚠ InfluxDB health check timeout"
+    sleep 1
+done
+
+echo ""
+docker compose ps
+echo ""
+echo "=== Services ==="
+echo "  MQTT:     localhost:1883"
+echo "  InfluxDB: http://localhost:8086"
+echo ""
+echo "Monitor MQTT: mosquitto_sub -t 'pdu/#' -v"
+echo "Bridge logs:  docker compose logs -f bridge"

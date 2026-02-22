@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+source .env 2>/dev/null || true
+
+MODE="${1:---real}"
+PASS=0
+FAIL=0
+
+pass() { echo "  ✓ $1"; ((PASS++)); }
+fail() { echo "  ✗ $1"; ((FAIL++)); }
+
+summary() {
+    echo ""
+    echo "=== Results: $PASS passed, $FAIL failed ==="
+    [ "$FAIL" -eq 0 ] && exit 0 || exit 1
+}
+
+case "$MODE" in
+    --snmpwalk)
+        echo "=== SNMP Walk against ${PDU_HOST:-192.168.20.177} ==="
+        HOST="${PDU_HOST:-192.168.20.177}"
+        COMMUNITY="${PDU_COMMUNITY_READ:-public}"
+        OUTFILE="snmpwalk-$(date +%Y%m%d-%H%M%S).txt"
+
+        if ! command -v snmpwalk &>/dev/null; then
+            echo "ERROR: snmpwalk not installed. Install snmp tools:"
+            echo "  sudo apt install snmp snmp-mibs-downloader"
+            exit 1
+        fi
+
+        echo "Walking 1.3.6.1.4.1.3808.1.1.3 ..."
+        snmpwalk -v2c -c "$COMMUNITY" "$HOST" 1.3.6.1.4.1.3808.1.1.3 | tee "$OUTFILE"
+        echo ""
+        echo "Saved to $OUTFILE"
+        ;;
+
+    --mock)
+        echo "=== Mock Integration Test ==="
+
+        # Start stack in mock mode
+        export BRIDGE_MOCK_MODE=true
+        docker compose up -d --build
+        sleep 5
+
+        echo "Checking services..."
+        docker compose ps --format '{{.Name}} {{.Status}}' | while read -r line; do
+            echo "  $line"
+        done
+
+        # Check MQTT messages are flowing
+        echo ""
+        echo "Checking MQTT data flow..."
+        MSGS=$(timeout 5 mosquitto_sub -h localhost -t 'pdu/#' -C 5 -v 2>/dev/null || true)
+        if [ -n "$MSGS" ]; then
+            pass "MQTT messages flowing"
+            echo "$MSGS" | head -5 | sed 's/^/    /'
+        else
+            fail "No MQTT messages received"
+        fi
+
+        # Check bridge status
+        STATUS=$(timeout 3 mosquitto_sub -h localhost -t 'pdu/+/bridge/status' -C 1 2>/dev/null || true)
+        if [ "$STATUS" = "online" ]; then
+            pass "Bridge status: online"
+        else
+            fail "Bridge status: '$STATUS'"
+        fi
+
+        # Check outlet state published
+        STATE=$(timeout 3 mosquitto_sub -h localhost -t 'pdu/+/outlet/1/state' -C 1 2>/dev/null || true)
+        if [ "$STATE" = "on" ] || [ "$STATE" = "off" ]; then
+            pass "Outlet 1 state: $STATE"
+        else
+            fail "Outlet 1 state not found: '$STATE'"
+        fi
+
+        # Test outlet command
+        echo ""
+        echo "Testing outlet command..."
+        mosquitto_pub -h localhost -t "pdu/${PDU_DEVICE_ID:-pdu44001}/outlet/1/command" -m "off"
+        sleep 2
+        RESP=$(timeout 3 mosquitto_sub -h localhost -t "pdu/+/outlet/1/command/response" -C 1 2>/dev/null || true)
+        if echo "$RESP" | grep -q '"success"'; then
+            pass "Command response received"
+        else
+            fail "No command response: '$RESP'"
+        fi
+
+        # Check InfluxDB has data (give telegraf time)
+        sleep 5
+        INFLUX_RESULT=$(docker compose exec influxdb influx query \
+            --org "${INFLUXDB_ORG:-cyber-pdu}" \
+            --token "${INFLUXDB_ADMIN_TOKEN:-cyber-pdu-admin-token}" \
+            'from(bucket: "pdu") |> range(start: -1m) |> limit(n: 1)' 2>/dev/null || true)
+        if [ -n "$INFLUX_RESULT" ]; then
+            pass "InfluxDB has data"
+        else
+            fail "No data in InfluxDB (may need more time)"
+        fi
+
+        summary
+        ;;
+
+    --real|"")
+        echo "=== Real PDU Test against ${PDU_HOST:-192.168.20.177} ==="
+        HOST="${PDU_HOST:-192.168.20.177}"
+        COMMUNITY="${PDU_COMMUNITY_READ:-public}"
+
+        # SNMP connectivity
+        echo "SNMP connectivity..."
+        if command -v snmpget &>/dev/null; then
+            RESULT=$(snmpget -v2c -c "$COMMUNITY" "$HOST" 1.3.6.1.4.1.3808.1.1.3.1.1.0 2>/dev/null || true)
+            if [ -n "$RESULT" ]; then
+                pass "SNMP reachable: $RESULT"
+            else
+                fail "SNMP not reachable at $HOST"
+            fi
+
+            # Read outlet count
+            OC=$(snmpget -v2c -c "$COMMUNITY" "$HOST" 1.3.6.1.4.1.3808.1.1.3.1.3.0 2>/dev/null || true)
+            if [ -n "$OC" ]; then
+                pass "Outlet count: $OC"
+            else
+                fail "Cannot read outlet count"
+            fi
+
+            # Read input voltage
+            IV=$(snmpget -v2c -c "$COMMUNITY" "$HOST" 1.3.6.1.4.1.3808.1.1.3.5.7.0 2>/dev/null || true)
+            if [ -n "$IV" ]; then
+                pass "Input voltage: $IV"
+            else
+                fail "Cannot read input voltage"
+            fi
+        else
+            echo "  ⚠ snmpget not installed, skipping direct SNMP tests"
+            echo "    Install: sudo apt install snmp"
+        fi
+
+        # Check if stack is running
+        echo ""
+        echo "Stack check..."
+        if docker compose ps --format '{{.Name}}' 2>/dev/null | grep -q mosquitto; then
+            pass "Docker stack is running"
+
+            # MQTT check
+            MSGS=$(timeout 5 mosquitto_sub -h localhost -t 'pdu/#' -C 3 -v 2>/dev/null || true)
+            if [ -n "$MSGS" ]; then
+                pass "MQTT data flowing"
+                echo "$MSGS" | head -3 | sed 's/^/    /'
+            else
+                fail "No MQTT messages (is bridge running?)"
+            fi
+        else
+            echo "  ⚠ Stack not running. Start with: ./run"
+        fi
+
+        summary
+        ;;
+
+    *)
+        echo "Usage: ./test [--real|--mock|--snmpwalk]"
+        echo ""
+        echo "  --real      Test against real PDU (default)"
+        echo "  --mock      Start stack in mock mode and run integration tests"
+        echo "  --snmpwalk  Full OID discovery walk (saves to file)"
+        exit 1
+        ;;
+esac
