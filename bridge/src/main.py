@@ -830,7 +830,7 @@ class PDUPoller:
     def _safe_record(self, data: PDUData):
         """Record to history, catching errors independently."""
         try:
-            self.history.record(data)
+            self.history.record(data, device_id=self.device_id)
         except Exception:
             self._subsystem_errors["history"] += 1
             if self._subsystem_errors["history"] <= 3:
