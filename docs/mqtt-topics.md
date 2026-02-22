@@ -1,6 +1,78 @@
 # MQTT Topic Reference
 
-Device ID defaults to `pdu44001`. Outlet numbers are 1-indexed (1-24). Bank numbers are 1-indexed (1-2).
+Device ID defaults to `pdu44001`. Outlet numbers are 1-indexed (1-10). Bank numbers are 1-indexed (1-2).
+
+## Topic Hierarchy
+
+```mermaid
+graph TD
+    Root["pdu/{device}"]
+
+    Root --> Status["status<br/><small>JSON summary</small>"]
+    Root --> Input["input/"]
+    Root --> Outlet["outlet/{n}/"]
+    Root --> Bank["bank/{n}/"]
+    Root --> BridgeMeta["bridge/"]
+    Root --> Auto["automation/"]
+
+    Input --> IV["voltage"]
+    Input --> IF["frequency"]
+
+    Outlet --> OS["state"]
+    Outlet --> ON["name"]
+    Outlet --> OC["current"]
+    Outlet --> OP["power"]
+    Outlet --> OE["energy"]
+    Outlet --> CMD["command"]
+    CMD --> RESP["response"]
+
+    Bank --> BC["current"]
+    Bank --> BV["voltage"]
+    Bank --> BP["power"]
+    Bank --> BA["apparent_power"]
+    Bank --> BPF["power_factor"]
+    Bank --> BLS["load_state"]
+
+    BridgeMeta --> BS["status<br/><small>LWT</small>"]
+
+    Auto --> AStatus["status<br/><small>rules JSON</small>"]
+    Auto --> AEvent["event<br/><small>trigger log</small>"]
+
+    style Root fill:#1a1a2e,stroke:#0ea5e9,color:#e2e4e9
+    style Status fill:#1a1a2e,stroke:#00dc82,color:#e2e4e9
+    style Input fill:#1a1a2e,stroke:#00dc82,color:#e2e4e9
+    style Outlet fill:#1a1a2e,stroke:#00dc82,color:#e2e4e9
+    style Bank fill:#1a1a2e,stroke:#00dc82,color:#e2e4e9
+    style BridgeMeta fill:#1a1a2e,stroke:#64748b,color:#e2e4e9
+    style Auto fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
+    style CMD fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
+    style RESP fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
+    style AStatus fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
+    style AEvent fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
+```
+
+## Message Flow
+
+```mermaid
+sequenceDiagram
+    participant Bridge as Python Bridge
+    participant Broker as Mosquitto
+    participant Sub as Subscriber<br/>(HA / Telegraf)
+    participant Pub as Publisher<br/>(CLI / HA)
+
+    Note over Bridge,Sub: Status Flow (retained, ~1Hz)
+    Bridge->>Broker: PUBLISH pdu/pdu44001/status (retained)
+    Bridge->>Broker: PUBLISH pdu/pdu44001/outlet/1/state (retained)
+    Bridge->>Broker: PUBLISH pdu/pdu44001/bank/1/power (retained)
+    Broker-->>Sub: Deliver retained + live messages
+
+    Note over Pub,Bridge: Command Flow
+    Pub->>Broker: PUBLISH pdu/pdu44001/outlet/3/command "off"
+    Broker->>Bridge: Deliver command
+    Bridge->>Bridge: SNMP SET → PDU
+    Bridge->>Broker: PUBLISH .../command/response (JSON)
+    Broker-->>Pub: Deliver response
+```
 
 ## Status Topics (published by bridge, retained, ~1Hz)
 
@@ -40,6 +112,13 @@ Device ID defaults to `pdu44001`. Outlet numbers are 1-indexed (1-24). Bank numb
 }
 ```
 
+## Automation Topics
+
+| Topic | Payload | Description |
+|-------|---------|-------------|
+| `pdu/{device}/automation/status` | JSON array | Current state of all rules |
+| `pdu/{device}/automation/event` | JSON | Rule trigger/restore events |
+
 ## Bridge Meta
 
 | Topic | Payload | Description |
@@ -51,3 +130,4 @@ Device ID defaults to `pdu44001`. Outlet numbers are 1-indexed (1-24). Bank numb
 - Per-outlet current/power/energy may not be available on the PDU44001 (Switched model, not Metered-by-Outlet). The bridge publishes only what the PDU reports.
 - All status topics use retained messages — subscribers get the latest value immediately on connect.
 - The `status` topic JSON includes a `timestamp` field (Unix epoch).
+- Metering floor correction: outlets reporting 1W or 0.2A are zeroed (PDU measurement noise).
