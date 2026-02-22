@@ -1,4 +1,4 @@
-"""SQLite history storage with 1-minute aggregation and weekly reports."""
+"""SQLite history storage with 1Hz sample recording and weekly reports."""
 
 import json
 import logging
@@ -14,21 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 class HistoryStore:
-    def __init__(self, db_path: str, retention_days: int = 90,
+    def __init__(self, db_path: str, retention_days: int = 60,
                  house_monthly_kwh: float = 0):
         self._db_path = db_path
         self._retention_days = retention_days
         self._house_monthly_kwh = house_monthly_kwh
-
-        # In-memory accumulators keyed by minute timestamp
-        self._current_minute: int = 0
-        self._bank_accum: dict[int, list[dict]] = {}  # bank_num -> [samples]
-        self._outlet_accum: dict[int, list[dict]] = {}  # outlet_num -> [samples]
+        self._write_count = 0
 
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._create_tables()
 
     def _create_tables(self):
@@ -67,68 +64,30 @@ class HistoryStore:
         self._conn.commit()
 
     def record(self, data: PDUData):
-        """Buffer a poll sample. Flushes to SQLite on minute rollover."""
+        """Write every poll sample directly to SQLite at 1Hz."""
         now = int(time.time())
-        minute = now // 60
 
-        if self._current_minute == 0:
-            self._current_minute = minute
-
-        if minute != self._current_minute:
-            self._flush()
-            self._current_minute = minute
-            self._bank_accum.clear()
-            self._outlet_accum.clear()
-
-        # Accumulate bank data
         for idx, bank in data.banks.items():
-            self._bank_accum.setdefault(idx, []).append({
-                "voltage": bank.voltage,
-                "current": bank.current,
-                "power": bank.power,
-                "apparent": bank.apparent_power,
-                "pf": bank.power_factor,
-            })
-
-        # Accumulate outlet data
-        for n, outlet in data.outlets.items():
-            self._outlet_accum.setdefault(n, []).append({
-                "state": outlet.state,
-                "current": outlet.current,
-                "power": outlet.power,
-                "energy": outlet.energy,
-            })
-
-    def _flush(self):
-        """Write averaged minute data to SQLite."""
-        ts = self._current_minute * 60
-
-        for bank_num, samples in self._bank_accum.items():
-            if not samples:
-                continue
-            row = self._average_samples(samples,
-                                        ["voltage", "current", "power", "apparent", "pf"])
             self._conn.execute(
                 "INSERT INTO bank_samples (ts, bank, voltage, current, power, apparent, pf) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (ts, bank_num, row["voltage"], row["current"],
-                 row["power"], row["apparent"], row["pf"]),
+                (now, idx, bank.voltage, bank.current,
+                 bank.power, bank.apparent_power, bank.power_factor),
             )
 
-        for outlet_num, samples in self._outlet_accum.items():
-            if not samples:
-                continue
-            row = self._average_samples(samples, ["current", "power"])
-            # state = last known, energy = last reading (counter)
-            last = samples[-1]
+        for n, outlet in data.outlets.items():
             self._conn.execute(
                 "INSERT INTO outlet_samples (ts, outlet, state, current, power, energy) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (ts, outlet_num, last["state"], row["current"],
-                 row["power"], last["energy"]),
+                (now, n, outlet.state, outlet.current,
+                 outlet.power, outlet.energy),
             )
 
-        self._conn.commit()
+        # Commit every 10 writes (~10 seconds) to batch disk I/O
+        self._write_count += 1
+        if self._write_count >= 10:
+            self._conn.commit()
+            self._write_count = 0
 
     @staticmethod
     def _average_samples(samples: list[dict], fields: list[str]) -> dict:
@@ -141,14 +100,18 @@ class HistoryStore:
     def _pick_interval(self, start: float, end: float) -> int:
         """Auto-select downsampling interval in seconds."""
         span = end - start
-        if span <= 6 * 3600:
-            return 60        # 1m for <6h
+        if span <= 3600:
+            return 1         # raw 1s for <=1h
+        elif span <= 6 * 3600:
+            return 10        # 10s for <=6h
         elif span <= 24 * 3600:
-            return 300       # 5m for <24h
+            return 60        # 1m for <=24h
         elif span <= 7 * 86400:
-            return 900       # 15m for <7d
+            return 300       # 5m for <=7d
+        elif span <= 30 * 86400:
+            return 900       # 15m for <=30d
         else:
-            return 3600      # 1h for 30d+
+            return 1800      # 30m for 60d
 
     def query_banks(self, start: float, end: float,
                     interval: int | None = None) -> list[dict]:
@@ -346,7 +309,5 @@ class HistoryStore:
         return result
 
     def close(self):
-        # Flush any remaining data
-        if self._bank_accum or self._outlet_accum:
-            self._flush()
+        self._conn.commit()
         self._conn.close()

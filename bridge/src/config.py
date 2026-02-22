@@ -22,6 +22,6 @@ class Config:
         self.web_port = int(os.environ.get("BRIDGE_WEB_PORT", "8080"))
 
         self.history_db = os.environ.get("BRIDGE_HISTORY_DB", "/data/history.db")
-        self.history_retention_days = int(os.environ.get("HISTORY_RETENTION_DAYS", "90"))
+        self.history_retention_days = int(os.environ.get("HISTORY_RETENTION_DAYS", "60"))
         self.house_monthly_kwh = float(os.environ.get("HOUSE_MONTHLY_KWH", "0"))
         self.outlet_names_file = os.environ.get("BRIDGE_OUTLET_NAMES_FILE", "/data/outlet_names.json")

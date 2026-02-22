@@ -54,76 +54,54 @@ class TestHistoryStore:
         store.close()
         os.unlink(path)
 
-    def test_record_accumulates(self):
+    def test_record_writes_immediately(self):
         store, path = self._make_store()
         data = make_pdu_data()
-        # Record should buffer, not write immediately
         store.record(data)
+        # Force commit for test
+        store._conn.commit()
         rows = store._conn.execute("SELECT COUNT(*) as c FROM bank_samples").fetchone()
-        assert rows["c"] == 0  # Still in buffer
+        assert rows["c"] == 1  # Written immediately
+        outlet_rows = store._conn.execute("SELECT COUNT(*) as c FROM outlet_samples").fetchone()
+        assert outlet_rows["c"] == 2  # 2 outlets
         store.close()
         os.unlink(path)
 
-    def test_flush_writes_data(self):
+    def test_record_values_correct(self):
         store, path = self._make_store()
         data = make_pdu_data(power=100.0, voltage=120.0, current=0.8)
+        store.record(data)
+        store._conn.commit()
 
-        # Manually set up accumulator and flush
-        store._current_minute = int(time.time()) // 60
-        store._bank_accum[1] = [
-            {"voltage": 120.0, "current": 0.8, "power": 100.0, "apparent": 110.0, "pf": 0.91},
-            {"voltage": 121.0, "current": 0.9, "power": 105.0, "apparent": 115.0, "pf": 0.92},
-        ]
-        store._outlet_accum[1] = [
-            {"state": "on", "current": 0.8, "power": 50.0, "energy": 1.5},
-            {"state": "on", "current": 0.9, "power": 55.0, "energy": 1.6},
-        ]
-        store._flush()
-
-        # Check bank data was averaged
         bank_rows = store._conn.execute("SELECT * FROM bank_samples").fetchall()
         assert len(bank_rows) == 1
-        assert bank_rows[0]["voltage"] == pytest.approx(120.5, abs=0.01)
-        assert bank_rows[0]["current"] == pytest.approx(0.85, abs=0.01)
-        assert bank_rows[0]["power"] == pytest.approx(102.5, abs=0.01)
+        assert bank_rows[0]["voltage"] == pytest.approx(120.0)
+        assert bank_rows[0]["current"] == pytest.approx(0.8)
+        assert bank_rows[0]["power"] == pytest.approx(100.0)
+        assert bank_rows[0]["apparent"] == pytest.approx(110.0)
+        assert bank_rows[0]["pf"] == pytest.approx(0.91)
 
-        # Check outlet data
-        outlet_rows = store._conn.execute("SELECT * FROM outlet_samples").fetchall()
+        outlet_rows = store._conn.execute(
+            "SELECT * FROM outlet_samples WHERE outlet=1"
+        ).fetchall()
         assert len(outlet_rows) == 1
-        assert outlet_rows[0]["current"] == pytest.approx(0.85, abs=0.01)
-        assert outlet_rows[0]["power"] == pytest.approx(52.5, abs=0.01)
-        # Energy should be last reading
-        assert outlet_rows[0]["energy"] == pytest.approx(1.6, abs=0.01)
-        # State should be last known
+        assert outlet_rows[0]["current"] == pytest.approx(0.8)
+        assert outlet_rows[0]["power"] == pytest.approx(50.0)
+        assert outlet_rows[0]["energy"] == pytest.approx(1.5)
         assert outlet_rows[0]["state"] == "on"
 
         store.close()
         os.unlink(path)
 
-    def test_minute_rollover_triggers_flush(self):
+    def test_batch_commit(self):
         store, path = self._make_store()
-
-        # Set current minute to an old value
-        store._current_minute = 1000
-        store._bank_accum[1] = [
-            {"voltage": 120.0, "current": 0.8, "power": 100.0, "apparent": 110.0, "pf": 0.91},
-        ]
-
-        # Record with a new minute (simulating time passing)
         data = make_pdu_data()
-        store._current_minute = 1000  # Ensure it's the old minute
-        # Manually trigger rollover by recording with a different minute
-        now_minute = int(time.time()) // 60
-        if now_minute == 1000:
-            now_minute = 1001
-        store._current_minute = now_minute - 1  # Force a different minute
-        store._bank_accum[1] = [
-            {"voltage": 119.0, "current": 0.7, "power": 95.0, "apparent": 105.0, "pf": 0.9},
-        ]
-        store.record(data)  # This should flush old data
 
-        bank_rows = store._conn.execute("SELECT * FROM bank_samples").fetchall()
-        assert len(bank_rows) == 1  # One minute of data was flushed
+        # Record 10 samples to trigger auto-commit
+        for _ in range(10):
+            store.record(data)
+
+        assert store._write_count == 0  # Reset after commit
 
         store.close()
         os.unlink(path)
@@ -172,14 +150,18 @@ class TestHistoryStore:
         store, path = self._make_store()
         now = int(time.time())
 
-        # 1m interval for <6h
-        assert store._pick_interval(now - 3600, now) == 60
-        # 5m interval for <24h
-        assert store._pick_interval(now - 12 * 3600, now) == 300
-        # 15m interval for <7d
-        assert store._pick_interval(now - 3 * 86400, now) == 900
-        # 1h interval for 30d
-        assert store._pick_interval(now - 30 * 86400, now) == 3600
+        # Raw 1s for <=1h
+        assert store._pick_interval(now - 3600, now) == 1
+        # 10s for <=6h
+        assert store._pick_interval(now - 6 * 3600, now) == 10
+        # 1m for <=24h
+        assert store._pick_interval(now - 12 * 3600, now) == 60
+        # 5m for <=7d
+        assert store._pick_interval(now - 3 * 86400, now) == 300
+        # 15m for <=30d
+        assert store._pick_interval(now - 15 * 86400, now) == 900
+        # 30m for 60d
+        assert store._pick_interval(now - 60 * 86400, now) == 1800
 
         store.close()
         os.unlink(path)
@@ -294,15 +276,12 @@ class TestHistoryStore:
         store.close()
         os.unlink(path)
 
-    def test_close_flushes(self):
+    def test_close_commits(self):
         store, path = self._make_store()
 
-        # Add data to accumulator
-        store._current_minute = int(time.time()) // 60
-        store._bank_accum[1] = [
-            {"voltage": 120.0, "current": 0.8, "power": 100.0, "apparent": 110.0, "pf": 0.91},
-        ]
-
+        data = make_pdu_data()
+        store.record(data)
+        # Data might not be committed yet
         store.close()
 
         # Reopen and check data was written
@@ -312,4 +291,10 @@ class TestHistoryStore:
         rows = conn.execute("SELECT * FROM bank_samples").fetchall()
         assert len(rows) == 1
         conn.close()
+        os.unlink(path)
+
+    def test_default_retention_60_days(self):
+        store, path = self._make_store()
+        assert store._retention_days == 60
+        store.close()
         os.unlink(path)
