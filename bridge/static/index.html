@@ -1,68 +1,107 @@
+<!-- CyberPower PDU Bridge
+     Created by Matthew Valancy, Valpatel Software LLC
+     Copyright 2026 MIT License
+     https://github.com/mvalancy/CyberPower-PDU -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberPDU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0b0e14;
-  --surface: #141820;
-  --surface-hi: #1c2030;
-  --border: #262b3a;
-  --border-hi: #363c50;
-  --text: #e2e4e9;
+  /* Valpatel brand palette */
+  --bg: #0a0a0f;
+  --surface: #0e0e14;
+  --surface-hi: #12121a;
+  --surface-3: #1a1a2e;
+  --border: rgba(0, 240, 255, 0.08);
+  --border-hi: rgba(0, 240, 255, 0.15);
+  --text: #c8d0dc;
   --text-2: #8b8fa3;
-  --text-3: #565b6e;
-  --green: #00dc82;
-  --green-dim: rgba(0,220,130,.12);
-  --red: #ff4757;
-  --red-dim: rgba(255,71,87,.12);
-  --blue: #0078ff;
-  --blue-dim: rgba(0,120,255,.1);
-  --amber: #ffad20;
-  --amber-dim: rgba(255,173,32,.12);
+  --text-3: #4a5568;
+  --cyan: #00f0ff;
+  --cyan-dim: rgba(0, 240, 255, 0.15);
+  --green: #05ffa1;
+  --green-dim: rgba(5, 255, 161, 0.12);
+  --red: #ff2a6d;
+  --red-dim: rgba(255, 42, 109, 0.12);
+  --amber: #fcee0a;
+  --amber-dim: rgba(252, 238, 10, 0.12);
+  --blue: #00f0ff;
+  --blue-dim: rgba(0, 240, 255, 0.1);
   --purple: #a78bfa;
   --radius: 8px;
   --radius-lg: 12px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
-  background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.5;-webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(rgba(0,240,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,0.025) 1px, transparent 1px);
+  background-size:80px 80px}
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:300px;
+  background:radial-gradient(ellipse at 50% 0%, rgba(0,240,255,0.06) 0%, transparent 70%);
+  pointer-events:none;z-index:0}
+body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.015) 2px,rgba(0,0,0,0.015) 4px);
+  z-index:9999}
 button{font-family:inherit;cursor:pointer}
 input,select{font-family:inherit}
 
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;
-  border-bottom:1px solid var(--border);background:var(--surface)}
-.header-brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--text)}
-.header-brand svg{color:var(--amber)}
+  border-bottom:1px solid var(--border);background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  position:relative;z-index:1}
+.header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg, var(--cyan), transparent 60%);opacity:0.3}
+.header-brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;color:var(--cyan);
+  letter-spacing:0.05em}
+.header-brand a{color:var(--cyan);text-decoration:none}
+.header-brand a:hover{text-shadow:0 0 12px rgba(0,240,255,0.4)}
+.header-brand svg{color:var(--cyan);filter:drop-shadow(0 0 4px rgba(0,240,255,0.4))}
+.header-sub{font-size:11px;color:var(--text-3);font-weight:400;margin-left:4px;letter-spacing:0.02em}
+.header-sub a{color:var(--text-3);text-decoration:none;transition:color 0.2s}
+.header-sub a:hover{color:var(--cyan)}
 .header-device{font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:8px}
-.header-device code{background:var(--surface-hi);padding:2px 8px;border-radius:4px;font-size:12px;color:var(--text-3)}
-.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.conn-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
-.conn-dot.err{background:var(--red);box-shadow:0 0 6px var(--red)}
+.header-device code{background:var(--surface-3);padding:2px 8px;border-radius:4px;
+  font-family:'JetBrains Mono','Fira Code',monospace;font-size:11px;color:var(--text-3);
+  border:1px solid var(--border)}
+.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block;transition:all 0.3s}
+.conn-dot.ok{background:var(--green);box-shadow:0 0 6px rgba(5,255,161,0.4)}
+.conn-dot.err{background:var(--red);box-shadow:0 0 6px rgba(255,42,109,0.4)}
 .conn-label{font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.5}}
+.conn-dot.ok{animation:pulse-dot 2s ease-in-out infinite}
 
 /* Layout */
-.main{max-width:1280px;margin:0 auto;padding:24px}
+.main{max-width:1280px;margin:0 auto;padding:24px;position:relative;z-index:1}
 .section{margin-bottom:24px}
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-3)}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-3);
+  font-family:'Inter',system-ui,sans-serif}
 
 /* ATS Panel */
-.ats-panel{background:var(--surface);border:2px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:border-color .4s}
-.ats-panel.normal{border-color:var(--blue)}
-.ats-panel.degraded{border-color:var(--amber)}
+.ats-panel{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:border-color .4s,box-shadow .4s}
+.ats-panel.normal{border-color:rgba(0,240,255,0.2);box-shadow:0 0 20px rgba(0,240,255,0.04)}
+.ats-panel.degraded{border-color:rgba(252,238,10,0.2);box-shadow:0 0 20px rgba(252,238,10,0.04)}
 
-.ats-header{padding:14px 20px;display:flex;align-items:center;justify-content:space-between;transition:background .4s}
-.ats-panel.normal .ats-header{background:rgba(0,120,255,.08)}
-.ats-panel.degraded .ats-header{background:rgba(255,173,32,.1)}
-.ats-title{font-size:13px;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
-.ats-panel.normal .ats-title{color:var(--blue)}
+.ats-header{padding:14px 20px;display:flex;align-items:center;justify-content:space-between;transition:background .4s;
+  position:relative}
+.ats-header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg, var(--cyan), transparent 60%);opacity:0.2}
+.ats-panel.normal .ats-header{background:rgba(0,240,255,.05)}
+.ats-panel.degraded .ats-header{background:rgba(252,238,10,.06)}
+.ats-title{font-size:13px;font-weight:700;letter-spacing:0.1em;display:flex;align-items:center;gap:8px}
+.ats-panel.normal .ats-title{color:var(--cyan)}
 .ats-panel.degraded .ats-title{color:var(--amber)}
-.ats-status-text{font-size:12px;font-weight:600;letter-spacing:.5px}
-.ats-panel.normal .ats-status-text{color:var(--blue)}
+.ats-status-text{font-size:12px;font-weight:600;letter-spacing:0.1em;font-family:'JetBrains Mono',monospace}
+.ats-panel.normal .ats-status-text{color:var(--cyan)}
 .ats-panel.degraded .ats-status-text{color:var(--amber)}
 
 .ats-body{padding:20px;display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:stretch}
@@ -77,14 +116,15 @@ input,select{font-family:inherit}
 .ats-input-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
 .ats-input-block .inp-label{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .ats-input-block .inp-label .inp-tag{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.5px}
-.inp-tag-a{background:var(--blue-dim);color:var(--blue)}
+.inp-tag-a{background:var(--cyan-dim);color:var(--cyan)}
 .inp-tag-b{background:rgba(167,139,250,.12);color:var(--purple)}
-.ats-input-block .inp-voltage{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1.1}
+.ats-input-block .inp-voltage{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1.1;
+  font-family:'JetBrains Mono',monospace}
 .ats-input-block .inp-sub{font-size:11px;margin-top:2px;display:flex;align-items:center;gap:6px}
 .ats-input-block .inp-sub .inp-status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .ats-input-block .inp-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
-.ats-input-block .inp-metric .im-val{font-size:14px;font-weight:600}
-.ats-input-block .inp-metric .im-lbl{font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.ats-input-block .inp-metric .im-val{font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.ats-input-block .inp-metric .im-lbl{font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em}
 .ats-input-block.active{border-color:var(--green);background:rgba(0,220,130,.03)}
 .ats-input-block.active .inp-voltage{color:var(--green)}
 .ats-input-block.active .inp-sub{color:var(--green)}
@@ -114,40 +154,41 @@ input,select{font-family:inherit}
 .led-bulb.red{background:var(--red);border-color:var(--red);box-shadow:0 0 8px var(--red)}
 .led-bulb.off{background:var(--surface-hi);border-color:var(--border)}
 .led-bulb.gray{background:#444;border-color:#555}
-.led-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-3);white-space:nowrap}
+.led-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-3);white-space:nowrap}
 
 /* Output / bus stats */
 .ats-output-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
 .ats-output-block .out-label{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px}
 .ats-output-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.out-stat .os-val{font-size:18px;font-weight:700;line-height:1.1}
-.out-stat .os-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
-.ats-output-block.healthy{border-color:var(--green)}
+.out-stat .os-val{font-size:18px;font-weight:700;line-height:1.1;font-family:'JetBrains Mono',monospace}
+.out-stat .os-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em}
+.ats-output-block.healthy{border-color:rgba(5,255,161,0.3);box-shadow:0 0 12px rgba(5,255,161,0.06)}
 .ats-output-block.healthy .out-label{color:var(--green)}
 
 /* Outlets */
 .outlets-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
-.outlet-tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
-.outlet-tile:hover{border-color:var(--border-hi);background:var(--surface-hi)}
+.outlet-tile{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s,box-shadow .2s;position:relative}
+.outlet-tile:hover{border-color:var(--border-hi);background:var(--surface-hi);box-shadow:0 0 20px rgba(0,240,255,0.04)}
 .outlet-tile .o-num{font-size:13px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;justify-content:center;gap:4px}
 .outlet-tile .o-name{font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
 .outlet-tile .o-state{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 .outlet-tile .o-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.outlet-tile.on .o-dot{background:var(--green);box-shadow:0 0 4px var(--green)}
+.outlet-tile.on .o-dot{background:var(--green);box-shadow:0 0 6px rgba(5,255,161,0.4);animation:pulse-dot 2s ease-in-out infinite}
 .outlet-tile.on .o-state{color:var(--green)}
-.outlet-tile.off .o-dot{background:var(--red)}
+.outlet-tile.off .o-dot{background:var(--red);box-shadow:0 0 6px rgba(255,42,109,0.4)}
 .outlet-tile.off .o-state{color:var(--red)}
 .outlet-tile .o-power{font-size:11px;color:var(--text-3);margin-top:4px}
 .o-edit-btn{background:none;border:none;color:var(--text-3);padding:0;font-size:11px;cursor:pointer;opacity:.5;transition:opacity .15s}
-.o-edit-btn:hover{opacity:1;color:var(--blue)}
-.o-name-input{width:80px;padding:2px 4px;font-size:10px;border:1px solid var(--blue);border-radius:3px;
-  background:var(--bg);color:var(--text);outline:none;text-align:center}
+.o-edit-btn:hover{opacity:1;color:var(--cyan)}
+.o-name-input{width:80px;padding:2px 4px;font-size:10px;border:1px solid var(--cyan);border-radius:3px;
+  background:var(--bg);color:var(--text);outline:none;text-align:center;font-family:'JetBrains Mono',monospace}
 
 /* Outlet popover */
 .outlet-pop{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;
-  background:var(--surface-hi);border:1px solid var(--border-hi);border-radius:var(--radius);
-  padding:6px;display:none;z-index:100;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  background:var(--surface-3);border:1px solid var(--border-hi);border-radius:var(--radius);
+  padding:6px;display:none;z-index:100;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .outlet-tile.active .outlet-pop{display:flex;gap:4px}
 .pop-btn{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface);
   color:var(--text-2);font-size:11px;font-weight:600;transition:all .1s}
@@ -163,27 +204,32 @@ input,select{font-family:inherit}
 .charts-wrap{display:grid;grid-template-columns:1fr;gap:12px}
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:700px){.chart-row{grid-template-columns:1fr}}
-.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;overflow:visible}
+.chart-card{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;overflow:visible;
+  transition:box-shadow 0.3s}
+.chart-card:hover{box-shadow:0 0 20px rgba(0,240,255,0.04)}
 .chart-card.wide{grid-column:1/-1}
-.chart-label{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.chart-label{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
 .chart-card canvas{width:100%;display:block}
 #chart-power{height:250px}
 #chart-voltage,#chart-current{height:200px}
 .chart-row .chart-card{min-height:240px}
 .chart-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .range-btn{padding:4px 12px;border:1px solid var(--border);border-radius:4px;background:transparent;
-  color:var(--text-2);font-size:11px;font-weight:600;transition:all .15s;cursor:pointer}
+  color:var(--text-2);font-size:11px;font-weight:600;transition:all .2s;cursor:pointer}
 .range-btn:hover{background:var(--surface-hi);border-color:var(--border-hi)}
-.range-btn.active{background:var(--blue-dim);color:var(--blue);border-color:var(--blue)}
+.range-btn.active{background:var(--cyan-dim);color:var(--cyan);border-color:var(--cyan);
+  box-shadow:0 0 8px rgba(0,240,255,0.1)}
 .export-btn{margin-left:auto}
 
 /* Rules */
 .rules-table{width:100%;border-collapse:collapse}
-.rules-table th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);
-  padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.rules-table th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--cyan);
+  padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);
+  text-shadow:0 0 8px rgba(0,240,255,0.15)}
 .rules-table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
 .rules-table tr:last-child td{border-bottom:none}
-.rules-table tr:hover td{background:var(--surface-hi)}
+.rules-table tr:hover td{background:rgba(0,240,255,0.02)}
 .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
 .badge::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .badge-armed{background:var(--green-dim);color:var(--green)}.badge-armed::before{background:var(--green)}
@@ -196,32 +242,36 @@ input,select{font-family:inherit}
 .btn-sm:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
 .btn-sm.danger:hover{color:var(--red);border-color:var(--red)}
 .rules-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.card{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:box-shadow 0.3s}
+.card:hover{box-shadow:0 0 20px rgba(0,240,255,0.04)}
 .card-body{padding:16px 20px}
 
 /* Add/edit rule form */
-.rule-form-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
-  padding:20px;display:none}
+.rule-form-wrap{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
+  border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;display:none}
 .rule-form-wrap.open{display:block}
 .rule-form-title{font-size:13px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
 .rule-form{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
 @media(max-width:700px){.rule-form{grid-template-columns:1fr 1fr}}
 .field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:4px}
 .field input,.field select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;
-  background:var(--bg);color:var(--text);font-size:13px;outline:none;transition:border-color .15s}
-.field input:focus,.field select:focus{border-color:var(--blue)}
+  background:var(--bg);color:var(--text);font-size:13px;outline:none;transition:border-color .2s,box-shadow .2s}
+.field input:focus,.field select:focus{border-color:var(--cyan);box-shadow:0 0 8px rgba(0,240,255,0.1)}
 .field-check{display:flex;align-items:center;gap:8px;padding-top:20px}
-.field-check input{width:16px;height:16px;accent-color:var(--blue)}
+.field-check input{width:16px;height:16px;accent-color:var(--cyan)}
 .field-check label{font-size:13px;color:var(--text-2)}
 .form-btns{grid-column:1/-1;display:flex;gap:8px;margin-top:4px}
-.btn{padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;border:none;transition:all .15s}
-.btn-primary{background:var(--blue);color:#fff}
-.btn-primary:hover{background:#0068dd}
+.btn{padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;border:none;transition:all .2s}
+.btn-primary{background:transparent;color:var(--cyan);border:1px solid var(--cyan);
+  box-shadow:0 0 8px rgba(0,240,255,0.1)}
+.btn-primary:hover{background:var(--cyan);color:#0a0a0f;box-shadow:0 0 16px rgba(0,240,255,0.3)}
 .btn-ghost{background:transparent;color:var(--text-2);border:1px solid var(--border)}
-.btn-ghost:hover{background:var(--surface-hi);color:var(--text)}
+.btn-ghost:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
 .btn-add{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;border:1px solid var(--border);
-  background:transparent;color:var(--text-2);transition:all .15s;display:flex;align-items:center;gap:4px}
-.btn-add:hover{background:var(--blue-dim);color:var(--blue);border-color:var(--blue)}
+  background:transparent;color:var(--text-2);transition:all .2s;display:flex;align-items:center;gap:4px}
+.btn-add:hover{background:var(--cyan-dim);color:var(--cyan);border-color:var(--cyan);
+  box-shadow:0 0 8px rgba(0,240,255,0.1)}
 .threshold-hint{font-size:10px;color:var(--text-3);margin-top:2px;display:none}
 .threshold-hint.visible{display:block}
 
@@ -239,7 +289,7 @@ input,select{font-family:inherit}
 .ev-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:1px 6px;border-radius:3px}
 .ev-tag.triggered{background:var(--red-dim);color:var(--red)}
 .ev-tag.restored{background:var(--green-dim);color:var(--green)}
-.ev-tag.created,.ev-tag.updated,.ev-tag.deleted{background:var(--blue-dim);color:var(--blue)}
+.ev-tag.created,.ev-tag.updated,.ev-tag.deleted{background:var(--cyan-dim);color:var(--cyan)}
 .ev-rule{font-weight:600;color:var(--text)}
 .ev-detail{color:var(--text-2)}
 .events-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
@@ -247,13 +297,13 @@ input,select{font-family:inherit}
 /* Reports */
 .report-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:16px}
 .report-stat{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;text-align:center}
-.report-stat .rs-val{font-size:22px;font-weight:700;line-height:1.2}
-.report-stat .rs-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px}
+.report-stat .rs-val{font-size:22px;font-weight:700;line-height:1.2;font-family:'JetBrains Mono',monospace}
+.report-stat .rs-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em}
 .report-bars{margin-top:12px}
 .report-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
 .report-bar-label{width:80px;text-align:right;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .report-bar-track{flex:1;height:16px;background:var(--bg);border-radius:3px;overflow:hidden;position:relative}
-.report-bar-fill{height:100%;background:var(--blue);border-radius:3px;transition:width .3s}
+.report-bar-fill{height:100%;background:var(--cyan);border-radius:3px;transition:width .3s}
 .report-bar-val{font-size:11px;color:var(--text-2);width:60px;text-align:right;flex-shrink:0}
 .report-week{font-size:12px;color:var(--text-3);margin-bottom:8px}
 .report-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
@@ -264,9 +314,11 @@ input,select{font-family:inherit}
 <div class="header">
   <div class="header-brand">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-    CyberPDU
+    <a href="https://github.com/mvalancy/CyberPower-PDU" target="_blank">CyberPower PDU Bridge</a>
+    <span class="header-sub">by <a href="https://valpatel.com" target="_blank">Valpatel Software</a></span>
   </div>
   <div class="header-device">
+    <select id="pdu-selector" style="display:none;background:var(--surface-hi);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer" onchange="switchPDU(this.value)"></select>
     <span id="device-name">--</span>
     <code id="device-id">--</code>
     <span class="conn-label">API</span>
@@ -277,6 +329,18 @@ input,select{font-family:inherit}
 </div>
 
 <div class="main">
+
+  <!-- Device Info Panel (shown when identity data available) -->
+  <div class="section" id="device-info-section" style="display:none">
+    <div style="background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 20px;display:flex;flex-wrap:wrap;gap:20px;font-size:12px;color:var(--text-2);position:relative">
+      <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg, var(--cyan), transparent 60%);opacity:0.2"></div>
+      <div><span style="color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-size:10px">Model</span> <strong id="di-model" style="color:var(--text);margin-left:4px;font-family:'JetBrains Mono',monospace">--</strong></div>
+      <div><span style="color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-size:10px">Serial</span> <strong id="di-serial" style="color:var(--text);margin-left:4px;font-family:'JetBrains Mono',monospace">--</strong></div>
+      <div><span style="color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-size:10px">Firmware</span> <strong id="di-firmware" style="color:var(--text);margin-left:4px;font-family:'JetBrains Mono',monospace">--</strong></div>
+      <div><span style="color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-size:10px">Uptime</span> <strong id="di-uptime" style="color:var(--text);margin-left:4px;font-family:'JetBrains Mono',monospace">--</strong></div>
+      <div><span style="color:var(--text-3);letter-spacing:0.1em;text-transform:uppercase;font-size:10px">Location</span> <strong id="di-location" style="color:var(--text);margin-left:4px">--</strong></div>
+    </div>
+  </div>
 
   <!-- ATS Transfer Switch Panel -->
   <div class="section">
@@ -484,6 +548,16 @@ input,select{font-family:inherit}
     </div>
   </div>
 
+  <!-- Footer -->
+  <div style="text-align:center;padding:24px 0 16px;font-size:11px;color:var(--text-3);letter-spacing:0.02em;border-top:1px solid var(--border);margin-top:16px">
+    Created by <a href="https://mattvalancy.com" style="color:var(--cyan);text-decoration:none" target="_blank">Matthew Valancy</a>
+    &nbsp;|&nbsp;
+    <a href="https://valpatel.com" style="color:var(--cyan);text-decoration:none" target="_blank">Valpatel Software LLC</a>
+    &nbsp;|&nbsp;
+    <a href="https://github.com/mvalancy/CyberPower-PDU" style="color:var(--cyan);text-decoration:none" target="_blank">GitHub</a>
+    <div style="margin-top:4px;color:var(--text-3);opacity:0.6">&copy; 2026 MIT License</div>
+  </div>
+
 </div>
 
 <script>
@@ -493,16 +567,29 @@ let editingOutletName = null;
 let chartRange = '1h';
 let chartTimer = null;
 
-const GREEN = '#00dc82';
-const RED = '#ff4757';
-const GRAY = '#363c50';
-const DIM_GRAY = '#2a2e3c';
-const STANDBY_OK = '#3d6b55';
-const BLUE = '#0078ff';
-const AMBER = '#ffad20';
+// Multi-PDU state
+let currentDeviceId = null;
+let pduList = [];
+
+const GREEN = '#05ffa1';
+const RED = '#ff2a6d';
+const GRAY = '#1a1a2e';
+const DIM_GRAY = '#12121a';
+const STANDBY_OK = '#2d6b55';
+const BLUE = '#00f0ff';
+const AMBER = '#fcee0a';
+
+function apiUrl(path) {
+  // Append ?device_id= when we have a selected device and multiple PDUs
+  if (currentDeviceId && pduList.length > 1) {
+    const sep = path.includes('?') ? '&' : '?';
+    return path + sep + 'device_id=' + encodeURIComponent(currentDeviceId);
+  }
+  return path;
+}
 
 async function api(url, opts) {
-  const r = await fetch(url, opts);
+  const r = await fetch(apiUrl(url), opts);
   return r.json();
 }
 
@@ -510,6 +597,56 @@ function fmt(v, d=1) { return v != null ? Number(v).toFixed(d) : '--'; }
 function fmtInt(v) { return v != null ? Math.round(v).toLocaleString() : '--'; }
 function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
 function esc(s) { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; }
+
+// --- Multi-PDU ---
+async function loadPDUList() {
+  try {
+    const resp = await fetch('/api/pdus');
+    const data = await resp.json();
+    pduList = data.pdus || [];
+    const sel = document.getElementById('pdu-selector');
+    if (pduList.length > 1) {
+      sel.style.display = '';
+      sel.innerHTML = pduList.map(p =>
+        `<option value="${esc(p.device_id)}"${p.device_id === currentDeviceId ? ' selected' : ''}>${esc(p.config.label || p.device_id)}</option>`
+      ).join('');
+      if (!currentDeviceId) { currentDeviceId = pduList[0].device_id; }
+    } else {
+      sel.style.display = 'none';
+      if (pduList.length === 1) { currentDeviceId = pduList[0].device_id; }
+    }
+  } catch (e) { /* single-PDU fallback — selector stays hidden */ }
+}
+
+function switchPDU(deviceId) {
+  currentDeviceId = deviceId;
+  poll();
+  loadCharts();
+  loadReport();
+}
+
+function formatUptime(hundredths) {
+  if (hundredths == null || hundredths <= 0) return '--';
+  let secs = Math.floor(hundredths / 100);
+  const days = Math.floor(secs / 86400); secs %= 86400;
+  const hrs = Math.floor(secs / 3600); secs %= 3600;
+  const mins = Math.floor(secs / 60);
+  if (days > 0) return days + 'd ' + hrs + 'h ' + mins + 'm';
+  if (hrs > 0) return hrs + 'h ' + mins + 'm';
+  return mins + 'm';
+}
+
+function renderIdentity(identity) {
+  const section = document.getElementById('device-info-section');
+  if (!identity) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  document.getElementById('di-model').textContent = identity.model || '--';
+  document.getElementById('di-serial').textContent = identity.serial || '--';
+  const fw = [identity.firmware_main, identity.firmware_secondary].filter(Boolean).join(' / ');
+  document.getElementById('di-firmware').textContent = fw || '--';
+  document.getElementById('di-uptime').textContent = formatUptime(identity.sys_uptime);
+  document.getElementById('di-location').textContent = identity.sys_location || '--';
+}
 
 // --- ATS Flow Diagram ---
 function updateATSDiagram(ats, summary, inputs) {
@@ -665,6 +802,9 @@ function renderStatus(s) {
   document.getElementById('device-id').textContent = s.device.id;
   updateATSDiagram(s.ats, s.summary, s.inputs);
 
+  // Device identity panel
+  renderIdentity(s.identity || null);
+
   document.getElementById('out-voltage').textContent = fmt(s.summary.input_voltage);
   document.getElementById('out-freq').textContent = fmt(s.summary.input_frequency);
   document.getElementById('out-power').textContent = fmtInt(s.summary.total_power);
@@ -772,8 +912,8 @@ function drawChart(canvas, data, valueKey, color, unit) {
   ctx.clearRect(0, 0, W, H);
 
   if (!data || !data.length) {
-    ctx.fillStyle = '#565b6e';
-    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#4a5568';
+    ctx.font = '12px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('No data', W/2, H/2);
     return;
@@ -806,18 +946,18 @@ function drawChart(canvas, data, valueKey, color, unit) {
   function y(v) { return pad.top + ch - ((v - minV) / rangeV) * ch; }
 
   // Grid lines
-  ctx.strokeStyle = '#1c2030';
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.05)';
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const gy = pad.top + (ch / 4) * i;
     ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(W - pad.right, gy); ctx.stroke();
     const gv = maxV - (rangeV / 4) * i;
-    ctx.fillStyle = '#565b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillStyle = '#4a5568'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'right';
     ctx.fillText(gv.toFixed(gv >= 100 ? 0 : 1), pad.left - 4, gy + 3);
   }
 
   // Time labels
-  ctx.fillStyle = '#565b6e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#4a5568'; ctx.font = '10px JetBrains Mono, monospace'; ctx.textAlign = 'center';
   const labelCount = Math.min(6, points.length);
   for (let i = 0; i < labelCount; i++) {
     const idx = Math.floor(i * (points.length - 1) / Math.max(labelCount - 1, 1));
@@ -852,7 +992,8 @@ function drawChart(canvas, data, valueKey, color, unit) {
 
 async function loadCharts() {
   try {
-    const data = await api(`/api/history/banks?range=${chartRange}`);
+    const url = `/api/history/banks?range=${chartRange}`;
+    const data = await api(url);
     drawChart(document.getElementById('chart-power'), data, 'power', GREEN, 'W');
     drawChart(document.getElementById('chart-voltage'), data, 'voltage', BLUE, 'V');
     drawChart(document.getElementById('chart-current'), data, 'current', AMBER, 'A');
@@ -869,7 +1010,7 @@ function setChartRange(range, btn) {
 }
 
 function exportCSV() {
-  window.open(`/api/history/banks.csv?range=${chartRange}`, '_blank');
+  window.open(apiUrl(`/api/history/banks.csv?range=${chartRange}`), '_blank');
 }
 
 // --- Rules ---
@@ -1093,12 +1234,16 @@ async function deleteRule(name) {
 }
 
 // --- Init ---
+loadPDUList();
 setInterval(poll, 2000);
 poll();
 
 // Charts refresh every 60s
 loadCharts();
 chartTimer = setInterval(loadCharts, 60000);
+
+// Refresh PDU list every 30s (catches newly added PDUs)
+setInterval(loadPDUList, 30000);
 
 // Load report on start
 loadReport();

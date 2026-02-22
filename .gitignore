@@ -13,5 +13,6 @@ mosquitto/log/
 influxdb-data/
 snmpwalk-*.txt
 *.log
+reports/
 .idea/
 .vscode/
