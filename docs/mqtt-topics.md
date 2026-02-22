@@ -1,6 +1,6 @@
 # MQTT Topic Reference
 
-> **Docs navigation:** [Architecture](architecture.md) | [MQTT Topics](mqtt-topics.md) (you are here) | [SNMP OIDs](snmp-oids.md) | [README](../README.md)
+> **Docs:** [Getting Started](getting-started.md) | [Configuration](configuration.md) | [API Reference](api-reference.md) | [Architecture](architecture.md) | [MQTT Topics](mqtt-topics.md) | [SNMP OIDs](snmp-oids.md) | [Multi-PDU](multi-pdu.md) | [Security](security.md) | [Troubleshooting](troubleshooting.md)
 
 This page is the complete reference for every MQTT topic published and consumed by the CyberPower PDU44001 bridge. If you are new to MQTT, start with the background section below. If you just need the topic tables, skip to [Topic Hierarchy](#topic-hierarchy).
 

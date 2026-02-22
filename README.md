@@ -1,149 +1,166 @@
-# CyberPower PDU44001 Monitoring & Control
+# CyberPower PDU Bridge
 
-SNMP-to-MQTT bridge for the CyberPower PDU44001 switched PDU with a built-in web dashboard, SQLite history, automation rules, and optional InfluxDB storage via Telegraf.
+A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family, with a real-time web dashboard, historical charts, automation rules, and Home Assistant integration.
 
-![Dashboard](docs/screenshots/dashboard-full.png)
+---
+
+## What Is This?
+
+A **PDU** (Power Distribution Unit) is a smart power strip for server racks. It monitors voltage, current, and power consumption, and lets you remotely turn individual outlets on and off. CyberPower PDUs communicate using SNMP -- a decades-old protocol that most modern tools do not understand natively.
+
+This project bridges that gap. It polls your CyberPower PDUs over SNMP, translates the data into MQTT (the standard for IoT), stores history in a local SQLite database, and serves a web dashboard -- all from a single Docker container. No cloud services, no subscriptions, no external dependencies.
+
+## Why Would I Want It?
+
+- **See everything at a glance** -- Live dashboard showing outlet states, power draw per bank, ATS status, and dual-source monitoring.
+- **Control outlets remotely** -- Turn outlets on, off, or reboot them from the web UI, MQTT, or REST API.
+- **Track power history** -- 60 days of 1-second-resolution charts with CSV export.
+- **Automate with rules** -- "If voltage drops below 108V, turn off outlet 5." "At 10 PM, shut down the lab lights."
+- **Integrate with Home Assistant** -- MQTT auto-discovery creates switches and sensors automatically.
+- **Monitor multiple PDUs** -- Single bridge instance handles any number of CyberPower PDUs.
+- **Run without a PDU** -- Mock mode generates realistic simulated data for development and demos.
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/mvalancy/CyberPower-PDU.git
+cd CyberPower-PDU
+./setup        # Creates .env, pulls images, builds containers
+# Edit .env with your PDU's IP address
+./run          # Starts the stack, waits for healthy
+```
+
+Open **http://localhost:8080** to see the dashboard.
+
+To try without a PDU, set `BRIDGE_MOCK_MODE=true` in `.env` before running `./run`.
+
+---
 
 ## Architecture
 
 ```mermaid
 graph LR
-    PDU["🔌 PDU44001<br/><small>192.168.20.177</small>"]
-    Bridge["🐍 Python Bridge<br/><small>SNMP ↔ MQTT</small>"]
-    MQTT["📡 Mosquitto<br/><small>:1883 / :9001</small>"]
-    WebUI["🖥️ Web Dashboard<br/><small>:8080</small>"]
-    SQLite["💾 SQLite<br/><small>history.db</small>"]
-    Telegraf["📊 Telegraf"]
-    InfluxDB["📈 InfluxDB<br/><small>:8086</small>"]
-    Clients["🏠 MQTT Clients<br/><small>HA · Node-RED · CLI</small>"]
+    PDU1["PDU #1<br/><small>SNMP</small>"]
+    PDU2["PDU #2<br/><small>SNMP</small>"]
+    Bridge["Python Bridge<br/><small>async poll loop</small>"]
+    MQTT["Mosquitto<br/><small>:1883</small>"]
+    WebUI["Web Dashboard<br/><small>:8080</small>"]
+    SQLite["SQLite History<br/><small>60-day 1Hz</small>"]
+    Rules["Automation<br/><small>voltage &amp; time rules</small>"]
+    HA["Home Assistant"]
+    Telegraf["Telegraf"]
+    InfluxDB["InfluxDB<br/><small>:8086</small>"]
 
-    PDU <-->|"SNMP GET/SET"| Bridge
-    Bridge -->|"MQTT pub"| MQTT
-    MQTT -->|"MQTT sub"| Bridge
-    Bridge --> SQLite
+    PDU1 <-->|"SNMP GET/SET"| Bridge
+    PDU2 <-->|"SNMP GET/SET"| Bridge
+    Bridge --> MQTT
     Bridge --> WebUI
-    MQTT -->|"subscribe"| Telegraf
-    Telegraf --> InfluxDB
-    MQTT <-->|"sub/pub"| Clients
+    Bridge --> SQLite
+    Bridge --> Rules
+    MQTT <-->|"pub/sub"| HA
+    MQTT --> Telegraf --> InfluxDB
 
-    style PDU fill:#1a1a2e,stroke:#00dc82,color:#e2e4e9
+    style PDU1 fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
+    style PDU2 fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
     style Bridge fill:#1a1a2e,stroke:#0ea5e9,color:#e2e4e9
-    style MQTT fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
+    style MQTT fill:#1a1a2e,stroke:#10b981,color:#e2e4e9
     style WebUI fill:#1a1a2e,stroke:#8b5cf6,color:#e2e4e9
     style SQLite fill:#1a1a2e,stroke:#06b6d4,color:#e2e4e9
+    style Rules fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
+    style HA fill:#1a1a2e,stroke:#10b981,color:#e2e4e9
     style Telegraf fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
     style InfluxDB fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
-    style Clients fill:#1a1a2e,stroke:#10b981,color:#e2e4e9
 ```
 
-The Python bridge is the only component that speaks SNMP. Everything else communicates via MQTT. The bridge also serves a real-time web dashboard and stores history in a self-contained SQLite database.
+The Python bridge is the central component. It is the only thing that speaks SNMP. Everything else communicates through MQTT or the built-in REST API. Telegraf and InfluxDB are optional -- the bridge stores 60 days of history in SQLite with zero external dependencies.
 
-## Web Dashboard
+---
 
-The single-page web UI provides real-time monitoring, outlet control, historical charts, and automation management — all without external dependencies.
+## Features
 
-### ATS & Power Sources
-
-Live dual-source monitoring with animated transfer switch diagram, per-bank metering, and source health indicators.
-
-![ATS Panel](docs/screenshots/ats-panel.png)
+### Real-Time Monitoring
+- ATS dual-source monitoring with animated transfer switch diagram
+- Per-bank voltage, current, power, apparent power, and power factor
+- Per-outlet state, current, power, and cumulative energy (kWh)
+- 1-second poll resolution
 
 ### Outlet Control
+- On/off/reboot via web dashboard, MQTT, or REST API
+- Custom outlet naming with persistence across restarts
+- SNMP SET for device name and location
 
-Individual outlet tiles with on/off control, power readings, and inline renaming. Custom names persist across restarts.
+### Historical Data
+- 60 days of 1Hz samples in SQLite (WAL mode)
+- Auto-downsampling for fast chart rendering (1s to 30m resolution)
+- CSV export for banks and outlets
+- Weekly energy reports with per-outlet breakdown
 
-![Outlets](docs/screenshots/outlets.png)
+### Automation Engine
+- Voltage threshold rules (brownout protection)
+- ATS source monitoring (backup power shedding)
+- Time-of-day schedules with midnight wrapping
+- Auto-restore when conditions clear
+- Configurable delay to avoid flickering
 
-### Historical Charts
+### Home Assistant Integration
+- MQTT auto-discovery for switches, sensors, and binary sensors
+- Per-device entities with model and firmware metadata
+- Bridge online/offline status via LWT
 
-Canvas-rendered power, voltage, and current graphs with configurable time ranges (1h to 30d) and CSV export. Data auto-downsamples for longer ranges.
+### Multi-PDU Support
+- Monitor any number of PDUs from a single bridge instance
+- Per-device MQTT namespacing, automation rules, and outlet names
+- Network scanner and interactive setup wizard
+- REST API for PDU management
 
-![Charts](docs/screenshots/charts.png)
+### Health Monitoring
+- Docker HEALTHCHECK integration
+- Per-subsystem health reporting (SNMP, MQTT, history)
+- PDU reboot detection via sysUptime
+- Graduated logging with automatic error suppression
 
-### Automation Rules
-
-Create rules that trigger outlet actions based on voltage thresholds or time-of-day schedules. Supports midnight-wrapping time ranges (e.g., `22:00-06:00`).
-
-![Automation](docs/screenshots/automation.png)
-
-## Quick Start
-
-```bash
-./setup    # Install dependencies, build containers
-./run      # Start the stack
-```
+---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and adjust:
+The four most common settings in `.env`:
 
-| Variable | Default | Description |
+| Variable | Default | What It Does |
 |----------|---------|-------------|
-| `PDU_HOST` | `192.168.20.177` | PDU IP address |
-| `PDU_COMMUNITY_READ` | `public` | SNMP read community |
-| `PDU_COMMUNITY_WRITE` | `private` | SNMP write community |
-| `PDU_DEVICE_ID` | `pdu44001` | Device identifier in MQTT topics |
+| `PDU_HOST` | `192.168.20.177` | Your PDU's IP address |
+| `BRIDGE_MOCK_MODE` | `false` | `true` for simulated data (no real PDU needed) |
 | `BRIDGE_POLL_INTERVAL` | `1.0` | Seconds between polls |
-| `BRIDGE_MOCK_MODE` | `false` | Use simulated PDU data |
-| `HISTORY_RETENTION_DAYS` | `60` | Days of 1Hz history to retain |
-| `HOUSE_MONTHLY_KWH` | `0` | House monthly kWh (for energy report comparison) |
+| `HISTORY_RETENTION_DAYS` | `60` | Days of history to keep |
 
-## MQTT Topics
+See [Configuration](docs/configuration.md) for the full reference.
 
-```mermaid
-graph TD
-    subgraph Status ["📤 Status Topics <small>(retained, ~1Hz)</small>"]
-        S1["pdu/{device}/status"]
-        S2["pdu/{device}/input/voltage"]
-        S3["pdu/{device}/outlet/{n}/state"]
-        S4["pdu/{device}/bank/{n}/power"]
-    end
+---
 
-    subgraph Control ["📥 Control Topics"]
-        C1["pdu/{device}/outlet/{n}/command"]
-        C2["pdu/{device}/outlet/{n}/command/response"]
-    end
+## Web Dashboard
 
-    Bridge["Python Bridge"] -->|"publish"| Status
-    Control -->|"subscribe"| Bridge
-    Bridge -->|"publish"| C2
+![Dashboard](docs/screenshots/dashboard-full.png)
 
-    style Status fill:#0d1117,stroke:#00dc82,color:#e2e4e9
-    style Control fill:#0d1117,stroke:#f59e0b,color:#e2e4e9
-    style Bridge fill:#1a1a2e,stroke:#0ea5e9,color:#e2e4e9
-```
+The single-page web UI provides real-time monitoring, outlet control, historical charts, and automation management.
 
-See [docs/mqtt-topics.md](docs/mqtt-topics.md) for the complete topic reference.
+---
 
-## Testing
+## Documentation
 
-```bash
-./test              # Test against real PDU
-./test --mock       # Full stack with simulated data
-./test --snmpwalk   # OID discovery walk
-```
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting-started.md) | Step-by-step from clone to dashboard |
+| [Configuration](docs/configuration.md) | All environment variables, pdus.json format, automation rules |
+| [API Reference](docs/api-reference.md) | Complete REST API with request/response examples |
+| [Architecture](docs/architecture.md) | System design, data flow diagrams, bridge internals |
+| [MQTT Topics](docs/mqtt-topics.md) | Full topic hierarchy with payload formats |
+| [SNMP OIDs](docs/snmp-oids.md) | CyberPower ePDU and ePDU2 MIB OID reference |
+| [Multi-PDU](docs/multi-pdu.md) | Monitoring multiple PDUs from one bridge |
+| [Security](docs/security.md) | Hardening SNMP, MQTT, InfluxDB, and the web UI |
+| [Troubleshooting](docs/troubleshooting.md) | Symptom-based diagnostic guide |
 
-Unit tests:
-```bash
-pip install pytest pytest-asyncio
-pytest tests/ -v
-```
-
-## Monitoring
-
-```bash
-# Watch all MQTT messages
-mosquitto_sub -t 'pdu/#' -v
-
-# Toggle an outlet
-mosquitto_pub -t 'pdu/pdu44001/outlet/1/command' -m 'off'
-
-# Bridge logs
-docker compose logs -f bridge
-
-# Web dashboard
-open http://localhost:8080
-```
+---
 
 ## Services
 
@@ -151,11 +168,24 @@ open http://localhost:8080
 |---------|------|-------------|
 | Bridge + Web UI | 8080 | SNMP-to-MQTT bridge + dashboard |
 | Mosquitto | 1883 (MQTT), 9001 (WS) | Message broker |
-| InfluxDB | 8086 | Time-series database + UI |
-| Telegraf | — | MQTT consumer to InfluxDB |
+| InfluxDB | 8086 | Time-series database + UI (optional) |
+| Telegraf | -- | MQTT consumer to InfluxDB (optional) |
 
-## Docs
+---
 
-- [Architecture](docs/architecture.md) — system design, data flow, bridge internals
-- [MQTT Topics](docs/mqtt-topics.md) — complete topic reference with payload formats
-- [SNMP OIDs](docs/snmp-oids.md) — CyberPower ePDU MIB OID table
+## Testing
+
+```bash
+./test              # Test against real PDU
+./test --mock       # Full stack with simulated data
+./test --snmpwalk   # OID discovery walk
+pytest tests/ -v    # Unit tests (407 tests)
+```
+
+---
+
+## License
+
+MIT License -- Copyright (c) 2026 Matthew Valancy, Valpatel Software LLC
+
+See [LICENSE](LICENSE) for the full text.
