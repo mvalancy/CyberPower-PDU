@@ -2,6 +2,8 @@
 
 A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family, with a real-time web dashboard, historical charts, automation rules, and Home Assistant integration.
 
+![CyberPower PDU Bridge Dashboard](docs/screenshots/dashboard.png)
+
 ---
 
 ## What Is This?
