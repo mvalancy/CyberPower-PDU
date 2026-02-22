@@ -85,7 +85,7 @@ Copy `.env.example` to `.env` and adjust:
 | `PDU_DEVICE_ID` | `pdu44001` | Device identifier in MQTT topics |
 | `BRIDGE_POLL_INTERVAL` | `1.0` | Seconds between polls |
 | `BRIDGE_MOCK_MODE` | `false` | Use simulated PDU data |
-| `HISTORY_RETENTION_DAYS` | `90` | Days of history to retain |
+| `HISTORY_RETENTION_DAYS` | `60` | Days of 1Hz history to retain |
 | `HOUSE_MONTHLY_KWH` | `0` | House monthly kWh (for energy report comparison) |
 
 ## MQTT Topics
