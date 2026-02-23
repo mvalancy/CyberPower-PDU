@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 
-A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family — including **Automatic Transfer Switch (ATS)** models — with a real-time web dashboard, historical charts, automation rules, and Home Assistant integration.
+A multi-PDU SNMP + Serial to MQTT bridge for the CyberPower product family — including **Automatic Transfer Switch (ATS)** models — with a real-time web dashboard, full PDU management, historical charts, automation rules, and Home Assistant integration.
 
 ![CyberPower PDU Bridge Dashboard](docs/screenshots/dashboard.png)
 
@@ -10,7 +10,7 @@ A multi-PDU SNMP-to-MQTT bridge for the CyberPower product family — including 
 
 A **PDU** (Power Distribution Unit) is a smart power strip for server racks. CyberPower's ATS models go further: they accept **two independent power sources** (e.g., grid/utility power on Input A and a battery inverter like EcoFlow, Bluetti, or a whole-house solar system on Input B) and automatically switch between them if the primary source fails. This gives your equipment uninterrupted power — even during outages.
 
-These PDUs communicate using SNMP, a decades-old protocol that most modern tools do not understand natively. This project bridges that gap. It polls your CyberPower PDUs over SNMP, translates the data into MQTT (the standard for IoT), stores history in a local SQLite database, and serves a web dashboard — all from a single Docker container. No cloud services, no subscriptions, no external dependencies.
+These PDUs communicate using SNMP and a serial console, both decades-old protocols that most modern tools do not understand natively. This project bridges that gap. It polls your CyberPower PDUs over SNMP (with optional RS-232 serial for full management), translates the data into MQTT (the standard for IoT), stores history in a local SQLite database, and serves a web dashboard — all from a single Docker container. No cloud services, no subscriptions, no external dependencies.
 
 ## Why Would I Want It?
 
@@ -46,7 +46,7 @@ To try without a PDU, set `BRIDGE_MOCK_MODE=true` in `.env` before running `./ru
 
 ```mermaid
 graph LR
-    PDU1["PDU #1<br/><small>SNMP</small>"]
+    PDU1["PDU #1<br/><small>SNMP + Serial</small>"]
     PDU2["PDU #2<br/><small>SNMP</small>"]
     Bridge["Python Bridge<br/><small>async poll loop</small>"]
     MQTT["Mosquitto<br/><small>:1883</small>"]
@@ -57,7 +57,7 @@ graph LR
     Telegraf["Telegraf"]
     InfluxDB["InfluxDB<br/><small>:8086</small>"]
 
-    PDU1 <-->|"SNMP GET/SET"| Bridge
+    PDU1 <-->|"SNMP GET/SET<br/>RS-232 Serial"| Bridge
     PDU2 <-->|"SNMP GET/SET"| Bridge
     Bridge --> MQTT
     Bridge --> WebUI
@@ -78,7 +78,7 @@ graph LR
     style InfluxDB fill:#1a1a2e,stroke:#ec4899,color:#e2e4e9
 ```
 
-The Python bridge is the central component. It is the only thing that speaks SNMP. Everything else communicates through MQTT or the built-in REST API. Telegraf and InfluxDB are optional -- the bridge stores 60 days of history in SQLite with zero external dependencies.
+The Python bridge is the central component. It is the only thing that speaks SNMP and serial. Everything else communicates through MQTT or the built-in REST API. Telegraf and InfluxDB are optional -- the bridge stores 60 days of history in SQLite with zero external dependencies.
 
 ---
 
@@ -88,12 +88,30 @@ The Python bridge is the central component. It is the only thing that speaks SNM
 - ATS dual-source monitoring with animated transfer switch diagram
 - Per-bank voltage, current, power, apparent power, and power factor
 - Per-outlet state, current, power, and cumulative energy (kWh)
+- Environmental monitoring (temperature, humidity, contact closures)
 - 1-second poll resolution
+
+### Dual Transport: SNMP + Serial
+- SNMP (network) for monitoring and basic outlet control
+- RS-232 serial console for full PDU management (thresholds, ATS, network, security)
+- Automatic failover between transports with health tracking
+- Serial port auto-discovery for USB-to-serial adapters
 
 ### Outlet Control
 - On/off/reboot via web dashboard, MQTT, or REST API
+- Delayed on/off commands with cancel support
 - Custom outlet naming with persistence across restarts
 - SNMP SET for device name and location
+
+### Full PDU Management (via serial or mock)
+- Load threshold configuration (overload, near-overload, low-load per bank)
+- ATS configuration (preferred source, sensitivity, voltage limits, coldstart)
+- Network configuration (IP, subnet, gateway, DHCP)
+- Security: default credential detection, password change, security banner
+- Notification configuration (SNMP traps, SMTP, email recipients, syslog)
+- EnergyWise configuration
+- User account management
+- Event log viewer
 
 ### Historical Data
 - 60 days of 1Hz samples in SQLite (WAL mode)
@@ -105,8 +123,10 @@ The Python bridge is the central component. It is the only thing that speaks SNM
 - Voltage threshold rules (brownout protection)
 - ATS source monitoring (backup power shedding)
 - Time-of-day schedules with midnight wrapping
+- Days-of-week filtering and one-shot rules
+- Multi-outlet targeting (comma-separated or range syntax)
 - Auto-restore when conditions clear
-- Configurable delay to avoid flickering
+- Enable/disable toggle per rule
 
 ### Home Assistant Integration
 - MQTT auto-discovery for switches, sensors, and binary sensors
@@ -123,6 +143,7 @@ The Python bridge is the central component. It is the only thing that speaks SNM
 - Docker HEALTHCHECK integration
 - Per-subsystem health reporting (SNMP, MQTT, history)
 - PDU reboot detection via sysUptime
+- DHCP resilience with graduated state machine (HEALTHY → DEGRADED → RECOVERING → LOST)
 - Graduated logging with automatic error suppression
 
 ---
@@ -180,16 +201,18 @@ The single-page web UI provides real-time monitoring, outlet control, historical
 ## Testing
 
 ```bash
-./test              # Test against real PDU
-./test --mock       # Full stack with simulated data
-./test --snmpwalk   # OID discovery walk
-pytest tests/ -v    # Unit tests (452 tests)
+./test              # 934 pytest unit tests with branded HTML report
+./test --e2e-mock   # 119 Playwright browser E2E tests (auto-starts mock bridge)
+./test --hardware   # Hardware validation suite (needs PDU_HOST)
+./test --mock       # Full Docker stack integration test with simulated data
+./test --real       # Integration test against real PDU via SNMP
+./test --snmpwalk   # OID discovery walk (saves to file)
 ```
 
 ---
 
 ## License
 
-MIT License -- Copyright (c) 2026 Matthew Valancy, Valpatel Software LLC
+GPL-3.0 License -- Copyright (c) 2026 Matthew Valancy, Valpatel Software LLC
 
 See [LICENSE](LICENSE) for the full text.

@@ -792,6 +792,378 @@ Get a specific report by ID.
 
 ---
 
+## PDU Management Endpoints (Serial/Mock)
+
+These endpoints read and write PDU configuration via the serial console (or MockPDU in mock mode). They require a serial transport or mock transport to be active; otherwise they return 503.
+
+All management endpoints accept an optional `?device_id=` query parameter for multi-PDU setups.
+
+---
+
+### GET /api/pdu/thresholds
+
+Get device and bank load thresholds.
+
+**Response (200):**
+
+```json
+{
+  "device": {
+    "overload_threshold": 80,
+    "near_overload_threshold": 70,
+    "low_load_threshold": 10
+  },
+  "banks": {
+    "1": {"overload": 80, "near_overload": 70, "low_load": 10},
+    "2": {"overload": 80, "near_overload": 70, "low_load": 10}
+  }
+}
+```
+
+---
+
+### PUT /api/pdu/thresholds/device
+
+Set device-level load thresholds.
+
+**Request body:**
+
+```json
+{
+  "overload": 80,
+  "near_overload": 70,
+  "low_load": 10
+}
+```
+
+**Response (200):** `{"ok": true}`
+
+---
+
+### PUT /api/pdu/thresholds/bank/{n}
+
+Set thresholds for a specific bank.
+
+**Request body:** Same as device thresholds.
+
+---
+
+### GET /api/pdu/outlets/config
+
+Get outlet configuration (names, delays, bank assignments).
+
+**Response (200):**
+
+```json
+{
+  "outlets": {
+    "1": {"name": "Outlet 1", "on_delay": 0, "off_delay": 0, "bank": 1},
+    "2": {"name": "Outlet 2", "on_delay": 0, "off_delay": 0, "bank": 1}
+  }
+}
+```
+
+---
+
+### PUT /api/pdu/outlets/{n}/config
+
+Configure a specific outlet (name, on_delay, off_delay).
+
+**Request body:**
+
+```json
+{
+  "name": "File Server",
+  "on_delay": 5,
+  "off_delay": 0
+}
+```
+
+---
+
+### GET /api/pdu/network
+
+Get PDU network configuration.
+
+**Response (200):**
+
+```json
+{
+  "ip": "192.168.1.100",
+  "subnet": "255.255.255.0",
+  "gateway": "192.168.1.1",
+  "dhcp_enabled": false,
+  "mac_address": "00:11:22:33:44:55"
+}
+```
+
+---
+
+### PUT /api/pdu/network
+
+Write network configuration to the PDU.
+
+**Request body:**
+
+```json
+{
+  "ip": "192.168.1.100",
+  "subnet": "255.255.255.0",
+  "gateway": "192.168.1.1",
+  "dhcp": false
+}
+```
+
+---
+
+### GET /api/pdu/ats/config
+
+Get ATS (Automatic Transfer Switch) configuration.
+
+**Response (200):**
+
+```json
+{
+  "preferred_source": "A",
+  "voltage_sensitivity": "Normal",
+  "transfer_voltage": 96,
+  "voltage_upper_limit": 138,
+  "voltage_lower_limit": 96,
+  "auto_transfer": true,
+  "coldstart_delay": 0,
+  "coldstart_state": "on"
+}
+```
+
+---
+
+### PUT /api/pdu/ats/preferred-source
+
+**Request body:** `{"source": "A"}` (or `"B"`)
+
+---
+
+### PUT /api/pdu/ats/sensitivity
+
+**Request body:** `{"sensitivity": "normal"}` (or `"high"`, `"low"`)
+
+---
+
+### PUT /api/pdu/ats/voltage-limits
+
+**Request body:** `{"upper": 138, "lower": 96}`
+
+---
+
+### PUT /api/pdu/ats/auto-transfer
+
+**Request body:** `{"enabled": true}`
+
+---
+
+### PUT /api/pdu/ats/coldstart
+
+**Request body:** `{"delay": 0, "state": "on"}`
+
+---
+
+### POST /api/pdu/security/check
+
+Check if the PDU is using factory default credentials (cyber/cyber).
+
+**Response (200):**
+
+```json
+{
+  "default_credentials": true
+}
+```
+
+---
+
+### POST /api/pdu/security/password
+
+Change a PDU user account password.
+
+**Request body:**
+
+```json
+{
+  "account": "admin",
+  "password": "NewSecureP@ss"
+}
+```
+
+**Response (200):** `{"ok": true}`
+
+---
+
+### GET /api/pdu/users
+
+Get PDU user accounts.
+
+**Response (200):**
+
+```json
+{
+  "users": {
+    "admin": {"access": "admin"},
+    "device": {"access": "viewer"}
+  }
+}
+```
+
+---
+
+### GET /api/pdu/eventlog
+
+Get the PDU event log.
+
+**Response (200):**
+
+```json
+{
+  "events": [
+    {"timestamp": "02/23/2026 10:00:00", "event_type": "System", "description": "System Started"}
+  ]
+}
+```
+
+---
+
+### GET /api/pdu/notifications
+
+Get notification configuration (traps, SMTP, email, syslog).
+
+**Response (200):**
+
+```json
+{
+  "traps": [
+    {"index": 1, "ip": "0.0.0.0", "community": "public", "type": "v2c", "enabled": true}
+  ],
+  "smtp": {"server": "", "port": 25, "from_addr": "", "auth_user": ""},
+  "email": [
+    {"index": 1, "to": "", "enabled": false}
+  ],
+  "syslog": [
+    {"index": 1, "ip": "0.0.0.0", "port": 514, "enabled": false}
+  ]
+}
+```
+
+---
+
+### PUT /api/pdu/notifications/traps/{index}
+
+Update a trap receiver.
+
+### PUT /api/pdu/notifications/smtp
+
+Update SMTP server configuration.
+
+### PUT /api/pdu/notifications/email/{index}
+
+Update an email recipient.
+
+### PUT /api/pdu/notifications/syslog/{index}
+
+Update a syslog server.
+
+---
+
+### GET /api/pdu/energywise
+
+Get EnergyWise configuration.
+
+**Response (200):**
+
+```json
+{
+  "domain": "",
+  "port": 43440,
+  "enabled": false
+}
+```
+
+---
+
+### PUT /api/pdu/energywise
+
+Update EnergyWise configuration.
+
+**Request body:**
+
+```json
+{
+  "domain": "energywise.local",
+  "port": 43440,
+  "enabled": true
+}
+```
+
+---
+
+### PUT /api/rules/{name}/toggle
+
+Enable or disable an automation rule.
+
+**Request body:**
+
+```json
+{
+  "enabled": false
+}
+```
+
+**Response (200):** The updated rule object.
+
+---
+
+## Authentication Endpoints
+
+These are only active when `BRIDGE_WEB_PASSWORD` is set.
+
+### POST /api/auth/login
+
+**Request body:** `{"password": "your-password"}`
+
+**Response (200):** `{"ok": true, "token": "..."}` with a session cookie.
+
+### POST /api/auth/logout
+
+Invalidate the current session.
+
+### GET /api/auth/status
+
+Check if the current session is authenticated.
+
+---
+
+## System Endpoints
+
+### GET /api/stream
+
+Server-Sent Events (SSE) stream for real-time updates.
+
+### GET /api/system/info
+
+System information (version, uptime, Python version).
+
+### POST /api/system/restart
+
+Restart the bridge process.
+
+### GET /api/system/backup
+
+Download a backup of all bridge data (rules, outlet names, PDU config).
+
+### POST /api/system/restore
+
+Restore from a backup file (multipart upload).
+
+---
+
 ## Static Content
 
 ### GET /

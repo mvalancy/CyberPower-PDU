@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 # Shared shell library — sourced by all scripts.
@@ -28,7 +28,7 @@ step()    { echo -e "${_CYAN}${_BOLD}==> $*${_RESET}"; }
 banner() {
     echo -e "${_BOLD}CyberPower PDU Bridge${_RESET}"
     echo "Created by Matthew Valancy, Valpatel Software LLC"
-    echo "Copyright 2026 MIT License"
+    echo "Copyright 2026 GPL-3.0 License"
     echo "https://github.com/mvalancy/CyberPower-PDU"
     echo ""
 }

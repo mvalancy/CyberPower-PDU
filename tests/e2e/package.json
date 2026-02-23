@@ -1,0 +1,12 @@
+{
+  "name": "cyber-pdu-e2e",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test --ignore-snapshots",
+    "test:mock": "npx playwright test --ignore-snapshots --grep-invert @hardware",
+    "test:hw": "HW_TEST=true npx playwright test --grep @hardware"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

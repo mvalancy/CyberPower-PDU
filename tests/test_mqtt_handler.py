@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Unit tests for MQTT handler."""
@@ -1189,8 +1189,8 @@ class TestPublishHADiscovery:
             handler.publish_ha_discovery(outlet_count=2, num_banks=1)
 
         # All publishes come from the first call only
-        # 2 outlet switches + 6 bank sensors + 2 input sensors + 1 bridge binary = 11
-        expected_count = 2 + 6 + 2 + 1
+        # 2 outlet switches + 6 bank sensors + 2 input sensors + 4 ATS sensors + 3 total sensors + 1 bridge binary = 18
+        expected_count = 2 + 6 + 2 + 4 + 3 + 1
         assert mock_client_instance.publish.call_count == expected_count
 
     def test_device_info_shared_across_entities(self, MockClient):
@@ -1426,3 +1426,422 @@ class TestIntegration:
 
         # After HA discovery, the dict should have entries
         assert len(handler.get_status()["ha_discovery_sent"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Unregister Device
+# ---------------------------------------------------------------------------
+
+@patch("paho.mqtt.client.Client")
+class TestUnregisterDevice:
+    """Tests for MQTTHandler.unregister_device()."""
+
+    def test_unregister_removes_callback(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config()
+        handler = MQTTHandler(config)
+
+        async def dummy_cb(outlet, cmd):
+            pass
+
+        handler.register_device("dev1", dummy_cb)
+        assert "dev1" in handler._device_callbacks
+
+        handler.unregister_device("dev1")
+        assert "dev1" not in handler._device_callbacks
+
+    def test_unregister_removes_ha_discovery_state(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config()
+        handler = MQTTHandler(config)
+
+        handler._ha_discovery_sent["dev1"] = True
+        handler.unregister_device("dev1")
+        assert "dev1" not in handler._ha_discovery_sent
+
+    def test_unregister_publishes_offline(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config()
+        handler = MQTTHandler(config)
+
+        handler.unregister_device("dev1")
+
+        # Should have published offline status
+        calls = mock_client_instance.publish.call_args_list
+        offline_calls = [c for c in calls if "dev1/bridge/status" in str(c) and "offline" in str(c)]
+        assert len(offline_calls) >= 1
+
+    def test_unregister_nonexistent_device(self, MockClient):
+        """Unregistering a device that doesn't exist should not raise."""
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config()
+        handler = MQTTHandler(config)
+
+        handler.unregister_device("nonexistent")  # Should not raise
+
+    def test_unregister_allows_re_registration(self, MockClient):
+        """After unregister, the same device_id can be re-registered."""
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config()
+        handler = MQTTHandler(config)
+
+        async def cb1(o, c): pass
+        async def cb2(o, c): pass
+
+        handler.register_device("dev1", cb1)
+        handler.unregister_device("dev1")
+        handler.register_device("dev1", cb2)
+        assert handler._device_callbacks["dev1"] is cb2
+
+
+# ---------------------------------------------------------------------------
+# ATS config publish tests
+# ---------------------------------------------------------------------------
+
+@patch("paho.mqtt.client.Client")
+class TestPublishATSConfig:
+    """Tests for ATS config fields in publish_pdu_data."""
+
+    def test_publishes_voltage_sensitivity(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        data.voltage_sensitivity = "Normal"
+        data.transfer_voltage = 88.0
+        data.voltage_upper_limit = 148.0
+        data.voltage_lower_limit = 88.0
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = {c[0][0]: c[0][1] for c in calls}
+
+        assert topics.get("pdu/pdu44001/ats/voltage_sensitivity") == "Normal"
+        assert topics.get("pdu/pdu44001/ats/transfer_voltage") == "88.0"
+        assert topics.get("pdu/pdu44001/ats/voltage_upper_limit") == "148.0"
+        assert topics.get("pdu/pdu44001/ats/voltage_lower_limit") == "88.0"
+
+    def test_publishes_total_load_power_energy(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        data.total_load = 2.5
+        data.total_power = 300.0
+        data.total_energy = 150.5
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = {c[0][0]: c[0][1] for c in calls}
+
+        assert topics.get("pdu/pdu44001/total/load") == "2.5"
+        assert topics.get("pdu/pdu44001/total/power") == "300.0"
+        assert topics.get("pdu/pdu44001/total/energy") == "150.5"
+
+    def test_skips_ats_fields_when_empty(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        # Default PDUData has empty ATS fields
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = [c[0][0] for c in calls]
+
+        assert "pdu/pdu44001/ats/voltage_sensitivity" not in topics
+        assert "pdu/pdu44001/ats/transfer_voltage" not in topics
+        assert "pdu/pdu44001/total/load" not in topics
+        assert "pdu/pdu44001/total/power" not in topics
+        assert "pdu/pdu44001/total/energy" not in topics
+
+
+# ---------------------------------------------------------------------------
+# Environment publish tests
+# ---------------------------------------------------------------------------
+
+@patch("paho.mqtt.client.Client")
+class TestPublishEnvironment:
+    """Tests for environment data in publish_pdu_data."""
+
+    def test_publishes_environment_when_present(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+        from src.pdu_model import EnvironmentalData
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        data.environment = EnvironmentalData(
+            temperature=23.5,
+            temperature_unit="C",
+            humidity=45,
+            contacts={1: True, 2: False},
+            sensor_present=True,
+        )
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = {c[0][0]: c[0][1] for c in calls}
+
+        assert topics.get("pdu/pdu44001/environment/temperature") == "23.5"
+        assert topics.get("pdu/pdu44001/environment/humidity") == "45"
+        assert topics.get("pdu/pdu44001/environment/contact/1") == "closed"
+        assert topics.get("pdu/pdu44001/environment/contact/2") == "open"
+
+    def test_skips_environment_when_absent(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        data.environment = None
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = [c[0][0] for c in calls]
+
+        env_topics = [t for t in topics if "environment" in t]
+        assert len(env_topics) == 0
+
+    def test_skips_environment_when_sensor_not_present(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+        from src.pdu_model import EnvironmentalData
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        data = make_pdu_data()
+        data.environment = EnvironmentalData(
+            temperature=None,
+            sensor_present=False,
+        )
+        handler.publish_pdu_data(data)
+
+        calls = mock_client_instance.publish.call_args_list
+        topics = [c[0][0] for c in calls]
+
+        env_topics = [t for t in topics if "environment" in t]
+        assert len(env_topics) == 0
+
+
+# ---------------------------------------------------------------------------
+# Extended MQTT command tests
+# ---------------------------------------------------------------------------
+
+@patch("paho.mqtt.client.Client")
+class TestExtendedCommands:
+    """Tests for extended MQTT commands (delayon, delayoff, cancel)."""
+
+    def test_delayon_command_accepted(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+        handler._command_callback = MagicMock(return_value=MagicMock())
+        handler._loop = MagicMock()
+
+        msg = make_mqtt_message("pdu/pdu44001/outlet/1/command", "delayon")
+        with patch("asyncio.run_coroutine_threadsafe"):
+            handler._on_message(MagicMock(), None, msg)
+        handler._command_callback.assert_called_once_with(1, "delayon")
+
+    def test_delayoff_command_accepted(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+        handler._command_callback = MagicMock(return_value=MagicMock())
+        handler._loop = MagicMock()
+
+        msg = make_mqtt_message("pdu/pdu44001/outlet/5/command", "delayoff")
+        with patch("asyncio.run_coroutine_threadsafe"):
+            handler._on_message(MagicMock(), None, msg)
+        handler._command_callback.assert_called_once_with(5, "delayoff")
+
+    def test_cancel_command_accepted(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+        handler._command_callback = MagicMock(return_value=MagicMock())
+        handler._loop = MagicMock()
+
+        msg = make_mqtt_message("pdu/pdu44001/outlet/3/command", "cancel")
+        with patch("asyncio.run_coroutine_threadsafe"):
+            handler._on_message(MagicMock(), None, msg)
+        handler._command_callback.assert_called_once_with(3, "cancel")
+
+    def test_unknown_command_rejected(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+        handler._command_callback = MagicMock(return_value=MagicMock())
+        handler._loop = MagicMock()
+
+        msg = make_mqtt_message("pdu/pdu44001/outlet/1/command", "explode")
+        handler._on_message(MagicMock(), None, msg)
+        handler._command_callback.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HA discovery ATS and total sensor tests
+# ---------------------------------------------------------------------------
+
+@patch("paho.mqtt.client.Client")
+class TestHADiscoveryATSAndTotal:
+    """Tests for ATS and total sensors in HA discovery."""
+
+    def test_publishes_ats_sensors(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        handler.publish_ha_discovery(outlet_count=1, num_banks=1)
+
+        calls = mock_client_instance.publish.call_args_list
+        ats_calls = [
+            c for c in calls
+            if c[0][0].startswith("homeassistant/sensor/pdu44001_ats_")
+        ]
+
+        # 4 ATS sensors: voltage_sensitivity, transfer_voltage, voltage_upper_limit, voltage_lower_limit
+        assert len(ats_calls) == 4
+
+        ats_topics = [c[0][0] for c in ats_calls]
+        assert "homeassistant/sensor/pdu44001_ats_voltage_sensitivity/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_transfer_voltage/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_voltage_upper_limit/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_voltage_lower_limit/config" in ats_topics
+
+    def test_ats_sensor_config_structure(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        handler.publish_ha_discovery(outlet_count=0, num_banks=0)
+
+        calls = mock_client_instance.publish.call_args_list
+        transfer_voltage_calls = [
+            c for c in calls
+            if "pdu44001_ats_transfer_voltage" in c[0][0]
+        ]
+
+        assert len(transfer_voltage_calls) == 1
+        payload = json.loads(transfer_voltage_calls[0][0][1])
+        assert payload["unique_id"] == "pdu44001_ats_transfer_voltage"
+        assert payload["state_topic"] == "pdu/pdu44001/ats/transfer_voltage"
+        assert payload["unit_of_measurement"] == "V"
+        assert "device" in payload
+        assert "availability" in payload
+
+    def test_publishes_total_sensors(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        handler.publish_ha_discovery(outlet_count=1, num_banks=1)
+
+        calls = mock_client_instance.publish.call_args_list
+        total_calls = [
+            c for c in calls
+            if c[0][0].startswith("homeassistant/sensor/pdu44001_total_")
+        ]
+
+        # 3 total sensors: load, power, energy
+        assert len(total_calls) == 3
+
+        total_topics = [c[0][0] for c in total_calls]
+        assert "homeassistant/sensor/pdu44001_total_load/config" in total_topics
+        assert "homeassistant/sensor/pdu44001_total_power/config" in total_topics
+        assert "homeassistant/sensor/pdu44001_total_energy/config" in total_topics
+
+    def test_total_energy_has_total_increasing_state_class(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        handler.publish_ha_discovery(outlet_count=0, num_banks=0)
+
+        calls = mock_client_instance.publish.call_args_list
+        energy_calls = [
+            c for c in calls
+            if "pdu44001_total_energy" in c[0][0]
+        ]
+
+        assert len(energy_calls) == 1
+        payload = json.loads(energy_calls[0][0][1])
+        assert payload["state_class"] == "total_increasing"
+        assert payload["device_class"] == "energy"
+        assert payload["unit_of_measurement"] == "kWh"
+
+    def test_total_load_sensor_config(self, MockClient):
+        from src.mqtt_handler import MQTTHandler
+
+        mock_client_instance = MockClient.return_value
+        mock_client_instance.publish.return_value = make_publish_info(rc=0)
+        config = make_config(device_id="pdu44001")
+        handler = MQTTHandler(config)
+
+        handler.publish_ha_discovery(outlet_count=0, num_banks=0)
+
+        calls = mock_client_instance.publish.call_args_list
+        load_calls = [
+            c for c in calls
+            if "pdu44001_total_load" in c[0][0]
+        ]
+
+        assert len(load_calls) == 1
+        payload = json.loads(load_calls[0][0][1])
+        assert payload["unique_id"] == "pdu44001_total_load"
+        assert payload["state_topic"] == "pdu/pdu44001/total/load"
+        assert payload["unit_of_measurement"] == "A"
+        assert payload["device_class"] == "current"
+        assert payload["state_class"] == "measurement"

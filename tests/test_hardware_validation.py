@@ -1,12 +1,16 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Live hardware validation suite — runs against a real CyberPower PDU.
 
-Skipped automatically when PDU_HOST is not set.
-Run with:  PDU_HOST=192.168.x.x pytest tests/test_hardware_validation.py -v
+Skipped automatically when PDU_HOST is not set (SNMP tests) or
+PDU_SERIAL_PORT is not set (serial tests).
+
+Run SNMP tests:  PDU_HOST=192.168.x.x pytest tests/test_hardware_validation.py -v
+Run serial tests: PDU_SERIAL_PORT=/dev/ttyUSB3 PDU_SERIAL_USERNAME=admin PDU_SERIAL_PASSWORD=Cyb3rPDU! pytest tests/test_hardware_validation.py -v
+Run all:  PDU_HOST=192.168.x.x PDU_SERIAL_PORT=/dev/ttyUSB3 ... pytest tests/test_hardware_validation.py -v
 """
 
 import asyncio
@@ -16,16 +20,24 @@ import time
 
 import pytest
 
-# Skip the entire module if no real PDU is available
+# SNMP test env vars
 PDU_HOST = os.environ.get("PDU_HOST", "")
 PDU_PORT = int(os.environ.get("PDU_SNMP_PORT", "161"))
 PDU_COMMUNITY = os.environ.get("PDU_COMMUNITY_READ", "public")
 PDU_COMMUNITY_WRITE = os.environ.get("PDU_COMMUNITY_WRITE", "private")
 PDU_TEST_OUTLET = int(os.environ.get("PDU_TEST_OUTLET", "0"))
 
+# Serial test env vars
+PDU_SERIAL_PORT = os.environ.get("PDU_SERIAL_PORT", "")
+PDU_SERIAL_USERNAME = os.environ.get("PDU_SERIAL_USERNAME", "cyber")
+PDU_SERIAL_PASSWORD = os.environ.get("PDU_SERIAL_PASSWORD", "cyber")
+PDU_SERIAL_BAUD = int(os.environ.get("PDU_SERIAL_BAUD", "9600"))
+
+# Skip SNMP tests if no host, skip serial tests if no port
+# Module-level skip only applies if BOTH are missing
 pytestmark = pytest.mark.skipif(
-    not PDU_HOST,
-    reason="No PDU_HOST configured — set PDU_HOST to run hardware tests",
+    not PDU_HOST and not PDU_SERIAL_PORT,
+    reason="No PDU_HOST or PDU_SERIAL_PORT configured — set one to run hardware tests",
 )
 
 # Add bridge source to path
@@ -323,3 +335,268 @@ class TestHealthAfterSweep:
         print(f"  Failed GETs: {health['failed_gets']}")
         print(f"  Consecutive failures: {health['consecutive_failures']}")
         assert health["reachable"], "SNMP client reports unreachable after sweep"
+
+
+# =======================================================================
+# Serial hardware tests — gated by PDU_SERIAL_PORT env var
+# =======================================================================
+
+serial_skip = pytest.mark.skipif(
+    not PDU_SERIAL_PORT,
+    reason="No PDU_SERIAL_PORT configured — set PDU_SERIAL_PORT to run serial tests",
+)
+
+
+@pytest.fixture(scope="module")
+def serial_client():
+    """Create a real SerialClient connected to the hardware PDU."""
+    from src.serial_client import SerialClient
+
+    client = SerialClient(
+        port=PDU_SERIAL_PORT,
+        username=PDU_SERIAL_USERNAME,
+        password=PDU_SERIAL_PASSWORD,
+        baud=PDU_SERIAL_BAUD,
+        timeout=10.0,
+    )
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="module")
+def serial_transport_hw():
+    """Create a real SerialTransport for integration tests."""
+    from src.serial_client import SerialClient
+    from src.serial_transport import SerialTransport
+    from src.pdu_config import PDUConfig
+
+    client = SerialClient(
+        port=PDU_SERIAL_PORT,
+        username=PDU_SERIAL_USERNAME,
+        password=PDU_SERIAL_PASSWORD,
+        baud=PDU_SERIAL_BAUD,
+        timeout=10.0,
+    )
+    config = PDUConfig(
+        device_id="hw-serial-test",
+        serial_port=PDU_SERIAL_PORT,
+        serial_baud=PDU_SERIAL_BAUD,
+        serial_username=PDU_SERIAL_USERNAME,
+        serial_password=PDU_SERIAL_PASSWORD,
+        transport="serial",
+    )
+    transport = SerialTransport(client, config)
+    yield transport
+    client.close()
+
+
+@serial_skip
+class TestSerialConnect:
+    """Verify serial connection and login."""
+
+    def test_serial_connect(self, serial_client, event_loop):
+        """Connect + login should succeed."""
+        run(event_loop, serial_client.connect())
+        assert serial_client.is_connected, "Serial client not connected"
+        assert serial_client._logged_in, "Serial client not logged in"
+        print(f"  Connected to {PDU_SERIAL_PORT}")
+
+
+@serial_skip
+class TestSerialSysShow:
+    """Verify sys show returns valid identity data."""
+
+    def test_serial_sys_show(self, serial_client, event_loop):
+        """Identity should have non-empty serial, model, firmware."""
+        from src.serial_parser import parse_sys_show
+        run(event_loop, serial_client.connect())
+        text = run(event_loop, serial_client.execute("sys show"))
+        identity = parse_sys_show(text)
+        print(f"  Name: {identity.name}")
+        print(f"  Model: {identity.model}")
+        print(f"  Serial: {identity.serial}")
+        print(f"  Firmware: {identity.firmware_main}")
+        assert identity.serial, "Serial number is empty"
+        assert identity.model, "Model is empty"
+
+
+@serial_skip
+class TestSerialDevstaShow:
+    """Verify devsta show returns sensible readings."""
+
+    def test_serial_devsta_show(self, serial_client, event_loop):
+        """Voltages should be in range, currents non-negative, power non-negative."""
+        from src.serial_parser import parse_devsta_show
+        run(event_loop, serial_client.connect())
+        text = run(event_loop, serial_client.execute("devsta show"))
+        result = parse_devsta_show(text)
+        print(f"  Active Source: {result['active_source']}")
+        print(f"  Source A: {result['source_a_voltage']}V")
+        print(f"  Source B: {result['source_b_voltage']}V")
+        print(f"  Total Load: {result['total_load']}A")
+        print(f"  Total Power: {result['total_power']}W")
+
+        if result["source_a_voltage"] is not None:
+            assert 80 <= result["source_a_voltage"] <= 260, \
+                f"Source A voltage {result['source_a_voltage']}V out of range"
+        if result["total_load"] is not None:
+            assert result["total_load"] >= 0, "Total load is negative"
+        if result["total_power"] is not None:
+            assert result["total_power"] >= 0, "Total power is negative"
+
+
+@serial_skip
+class TestSerialOltstaShow:
+    """Verify oltsta show returns outlet data."""
+
+    def test_serial_oltsta_show(self, serial_client, event_loop):
+        """Outlet count > 0, all outlets have valid state."""
+        from src.serial_parser import parse_oltsta_show
+        run(event_loop, serial_client.connect())
+        text = run(event_loop, serial_client.execute("oltsta show"))
+        outlets = parse_oltsta_show(text)
+        assert len(outlets) > 0, "No outlets found"
+        print(f"  Found {len(outlets)} outlets")
+        for n, o in sorted(outlets.items()):
+            assert o.state in ("on", "off"), f"Outlet {n} unexpected state: {o.state}"
+            print(f"    Outlet {n}: {o.name} = {o.state}")
+
+
+@serial_skip
+class TestSerialSrccfgShow:
+    """Verify srccfg show returns source config."""
+
+    def test_serial_srccfg_show(self, serial_client, event_loop):
+        """Preferred source should be A or B, voltage limits sensible."""
+        from src.serial_parser import parse_srccfg_show
+        run(event_loop, serial_client.connect())
+        text = run(event_loop, serial_client.execute("srccfg show"))
+        result = parse_srccfg_show(text)
+        assert result["preferred_source"] in ("A", "B"), \
+            f"Unexpected preferred source: {result['preferred_source']}"
+        print(f"  Preferred: {result['preferred_source']}")
+        if result["voltage_upper_limit"] is not None:
+            assert 100 <= result["voltage_upper_limit"] <= 300
+
+
+@serial_skip
+class TestSerialOltcfgShow:
+    """Verify oltcfg show returns outlet configuration."""
+
+    def test_serial_oltcfg_show(self, serial_client, event_loop):
+        """Outlet names should be present, delays should be integers."""
+        from src.serial_parser import parse_oltcfg_show
+        run(event_loop, serial_client.connect())
+        text = run(event_loop, serial_client.execute("oltcfg show"))
+        config = parse_oltcfg_show(text)
+        print(f"  Found {len(config)} outlet configs")
+        for n, cfg in sorted(config.items()):
+            assert "name" in cfg, f"Outlet {n} missing name"
+            assert isinstance(cfg.get("on_delay", 0), int), \
+                f"Outlet {n} on_delay not int"
+            print(f"    Outlet {n}: {cfg['name']}, on_delay={cfg['on_delay']}s")
+
+
+@serial_skip
+class TestSerialOutletControl:
+    """Test outlet control (safe outlet only, opt-in via PDU_TEST_OUTLET)."""
+
+    @pytest.mark.skipif(
+        PDU_TEST_OUTLET == 0,
+        reason="PDU_TEST_OUTLET not set — skipping outlet control test",
+    )
+    def test_serial_outlet_off_on(self, serial_transport_hw, event_loop):
+        """Turn test outlet off, verify, turn back on."""
+        n = PDU_TEST_OUTLET
+        run(event_loop, serial_transport_hw.connect())
+        print(f"  Testing outlet {n} via serial...")
+
+        # Off
+        ok = run(event_loop, serial_transport_hw.command_outlet(n, "off"))
+        assert ok, "OFF command failed"
+        time.sleep(3)
+
+        # Verify off
+        from src.serial_parser import parse_oltsta_show
+        text = run(event_loop, serial_transport_hw.serial_client.execute("oltsta show"))
+        outlets = parse_oltsta_show(text)
+        assert outlets[n].state == "off", f"Outlet {n} should be off"
+        print(f"  Outlet {n} confirmed OFF")
+
+        # On
+        ok = run(event_loop, serial_transport_hw.command_outlet(n, "on"))
+        assert ok, "ON command failed"
+        time.sleep(3)
+
+        text = run(event_loop, serial_transport_hw.serial_client.execute("oltsta show"))
+        outlets = parse_oltsta_show(text)
+        assert outlets[n].state == "on", f"Outlet {n} should be on"
+        print(f"  Outlet {n} confirmed ON")
+
+
+@serial_skip
+class TestSerialDeviceRename:
+    """Test device rename via serial (non-destructive)."""
+
+    def test_serial_rename_roundtrip(self, serial_transport_hw, event_loop):
+        """Set name, read back, restore original."""
+        run(event_loop, serial_transport_hw.connect())
+        # Read original
+        identity = run(event_loop, serial_transport_hw.get_identity())
+        original_name = identity.name
+        print(f"  Original name: {original_name}")
+
+        # Set new name
+        ok = run(event_loop, serial_transport_hw.set_device_field(
+            "device_name", "HWTest-Temp",
+        ))
+        assert ok, "Rename failed"
+
+        # Read back
+        identity2 = run(event_loop, serial_transport_hw.get_identity())
+        print(f"  New name: {identity2.name}")
+
+        # Restore
+        run(event_loop, serial_transport_hw.set_device_field(
+            "device_name", original_name,
+        ))
+        identity3 = run(event_loop, serial_transport_hw.get_identity())
+        print(f"  Restored name: {identity3.name}")
+
+
+@serial_skip
+class TestSerialPollIntegration:
+    """Test full SerialTransport.poll() returns valid PDUData."""
+
+    def test_serial_poll(self, serial_transport_hw, event_loop):
+        """poll() should return a PDUData with outlets and banks."""
+        run(event_loop, serial_transport_hw.connect())
+        # Get identity first (needed for poll)
+        run(event_loop, serial_transport_hw.get_identity())
+
+        data = run(event_loop, serial_transport_hw.poll())
+        assert data is not None, "poll() returned None"
+        assert data.outlet_count > 0, f"outlet_count = {data.outlet_count}"
+        assert len(data.outlets) > 0, "No outlets in poll data"
+        assert data.input_voltage is not None, "No input voltage"
+        print(f"  Poll: {data.outlet_count} outlets, "
+              f"voltage={data.input_voltage}V, "
+              f"{len(data.banks)} banks")
+
+
+@serial_skip
+class TestSerialHealthTracking:
+    """Verify serial health dict has expected keys."""
+
+    def test_serial_health_keys(self, serial_transport_hw, event_loop):
+        """Health dict should have standard keys."""
+        health = serial_transport_hw.get_health()
+        expected_keys = [
+            "port", "connected", "logged_in", "total_commands",
+            "failed_commands", "consecutive_failures", "reachable", "transport",
+        ]
+        for key in expected_keys:
+            assert key in health, f"Missing health key: {key}"
+        print(f"  Transport: {health['transport']}")
+        print(f"  Connected: {health['connected']}")
+        print(f"  Commands: {health['total_commands']}")

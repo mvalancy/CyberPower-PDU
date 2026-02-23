@@ -392,3 +392,72 @@ docker compose restart bridge
 ### Check the topic prefix
 
 Home Assistant expects discovery messages under `homeassistant/`. The bridge publishes to `homeassistant/switch/`, `homeassistant/sensor/`, and `homeassistant/binary_sensor/`. If your Home Assistant uses a different discovery prefix, this may not match.
+
+---
+
+## Management Tab Shows "Requires Serial"
+
+The Manage tab in Settings shows "Requires serial transport" for some features.
+
+### Why this happens
+
+PDU management features (thresholds, ATS config, network settings, security, notifications) require either a serial transport connection or mock mode. SNMP alone cannot access these settings on CyberPower PDUs.
+
+### Solution
+
+1. **Connect via serial** -- Attach a USB-to-serial cable to the PDU's RS-232 port and configure serial settings:
+
+```ini
+PDU_SERIAL_PORT=/dev/ttyUSB0
+PDU_SERIAL_USERNAME=admin
+PDU_SERIAL_PASSWORD=cyber
+```
+
+2. **Use mock mode for testing** -- Set `BRIDGE_MOCK_MODE=true` to enable a simulated PDU with full management support.
+
+3. **Check serial permissions** -- The Docker container needs access to the serial device. Add it to `docker-compose.yml`:
+
+```yaml
+bridge:
+  devices:
+    - /dev/ttyUSB0:/dev/ttyUSB0
+```
+
+---
+
+## Serial Connection Not Working
+
+The bridge cannot connect to the PDU via serial console.
+
+### Step 1: Verify the serial device exists
+
+```bash
+ls -la /dev/ttyUSB*
+```
+
+If no devices appear, check that the USB-to-serial adapter is connected and its driver is loaded.
+
+### Step 2: Check permissions
+
+```bash
+# Add your user to the dialout group
+sudo usermod -aG dialout $USER
+```
+
+### Step 3: Test the connection manually
+
+```bash
+# Install screen for manual serial testing
+sudo apt install screen
+screen /dev/ttyUSB0 9600
+```
+
+Type `sys show` and press Space. You should see a login prompt. The CyberPower PDU44001 uses Space (not Enter) as the submit key.
+
+### Step 4: Check bridge logs
+
+```bash
+docker compose logs bridge | grep -i serial
+```
+
+Look for connection errors, authentication failures, or timeout messages.

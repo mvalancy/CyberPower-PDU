@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Unit tests for SNMP client with mocked pysnmp calls."""
@@ -276,6 +276,55 @@ async def test_set_exception(client):
     assert client._failed_sets == 1
     assert client._consecutive_failures == 1
     assert "connection refused" in client._last_error_msg
+
+
+# ---------------------------------------------------------------------------
+# SET STRING — success
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_set_string_success(client):
+    """Successful SNMP SET with OctetString returns True."""
+    var_binds = [_make_var_bind("1.3.6.1.2.1.1.6.0", "Server Room")]
+    mock_result = (None, None, 0, var_binds)
+
+    with patch("src.snmp_client.setCmd", new_callable=AsyncMock, return_value=mock_result):
+        result = await client.set_string("1.3.6.1.2.1.1.6.0", "Server Room")
+
+    assert result is True
+    assert client._total_sets == 1
+    assert client._failed_sets == 0
+
+
+# ---------------------------------------------------------------------------
+# SET STRING — error_indication returns False
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_set_string_error_indication(client):
+    """SET STRING with error_indication returns False."""
+    mock_result = ("requestTimedOut", None, 0, [])
+
+    with patch("src.snmp_client.setCmd", new_callable=AsyncMock, return_value=mock_result):
+        result = await client.set_string("1.3.6.1.2.1.1.6.0", "Rack A")
+
+    assert result is False
+    assert client._failed_sets == 1
+
+
+# ---------------------------------------------------------------------------
+# SET STRING — exception returns False
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_set_string_exception(client):
+    """SET STRING that raises an exception returns False."""
+    with patch("src.snmp_client.setCmd", new_callable=AsyncMock, side_effect=OSError("refused")):
+        result = await client.set_string("1.3.6.1.2.1.1.6.0", "Rack B")
+
+    assert result is False
+    assert client._failed_sets == 1
+    assert "refused" in client._last_error_msg
 
 
 # ---------------------------------------------------------------------------

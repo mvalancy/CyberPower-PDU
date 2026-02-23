@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Automation engine — input-failure outlet control rules."""
@@ -32,10 +32,19 @@ class AutomationRule:
     input: int            # 1 (bank A) or 2 (bank B), ignored for time conditions
     condition: str        # "voltage_below", "voltage_above", "time_after", etc.
     threshold: Any        # volts (float) or time string ("22:00", "22:00-06:00")
-    outlet: int           # outlet number to act on
-    action: str           # "on" or "off"
+    outlet: int | list[int] = 1  # outlet number(s) to act on
+    action: str = "off"   # "on" or "off"
     restore: bool = True  # reverse action when condition clears
     delay: int = 5        # seconds condition must hold before acting
+    days_of_week: list[int] = field(default_factory=list)  # 0=Mon..6=Sun, []=all
+    schedule_type: str = "continuous"  # "continuous" | "oneshot"
+    enabled: bool = True
+
+    def _outlet_list(self) -> list[int]:
+        """Return outlet(s) as a list regardless of int or list input."""
+        if isinstance(self.outlet, list):
+            return self.outlet
+        return [self.outlet]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +56,9 @@ class AutomationRule:
             "action": self.action,
             "restore": self.restore,
             "delay": self.delay,
+            "days_of_week": self.days_of_week,
+            "schedule_type": self.schedule_type,
+            "enabled": self.enabled,
         }
 
     @classmethod
@@ -76,9 +88,29 @@ class AutomationRule:
         else:
             threshold = float(d["threshold"])
 
-        outlet = int(d["outlet"])
-        if outlet < 1:
-            raise ValueError(f"Outlet must be >= 1, got {outlet}")
+        # Parse outlet: int or list[int]
+        raw_outlet = d["outlet"]
+        if isinstance(raw_outlet, list):
+            outlet = [int(o) for o in raw_outlet]
+            if any(o < 1 for o in outlet):
+                raise ValueError("All outlets must be >= 1")
+        else:
+            outlet = int(raw_outlet)
+            if outlet < 1:
+                raise ValueError(f"Outlet must be >= 1, got {outlet}")
+
+        # Parse days_of_week
+        days = d.get("days_of_week", [])
+        if isinstance(days, list):
+            days = [int(day) for day in days]
+            if any(day < 0 or day > 6 for day in days):
+                raise ValueError("days_of_week values must be 0-6 (Mon-Sun)")
+        else:
+            days = []
+
+        schedule_type = d.get("schedule_type", "continuous")
+        if schedule_type not in ("continuous", "oneshot"):
+            raise ValueError(f"Invalid schedule_type: {schedule_type!r}")
 
         return cls(
             name=d["name"],
@@ -89,6 +121,9 @@ class AutomationRule:
             action=action,
             restore=d.get("restore", True),
             delay=int(d.get("delay", 5)),
+            days_of_week=days,
+            schedule_type=schedule_type,
+            enabled=d.get("enabled", True),
         )
 
 
@@ -111,12 +146,16 @@ class RuleState:
     triggered: bool = False
     condition_since: float | None = None  # when condition first became true
     fired_at: float | None = None
+    execution_count: int = 0
+    last_execution: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "triggered": self.triggered,
             "condition_since": self.condition_since,
             "fired_at": self.fired_at,
+            "execution_count": self.execution_count,
+            "last_execution": self.last_execution,
         }
 
 
@@ -195,6 +234,16 @@ class AutomationEngine:
         return now.hour, now.minute
 
     def _check_condition(self, rule: AutomationRule, data: PDUData) -> bool:
+        # Check enabled flag
+        if not rule.enabled:
+            return False
+
+        # Check day-of-week filter
+        if rule.days_of_week:
+            today = datetime.now().weekday()
+            if today not in rule.days_of_week:
+                return False
+
         if rule.condition == "ats_source_is":
             # Triggers when the ATS active source matches threshold (1=A, 2=B)
             if data.ats_current_source is None:
@@ -262,6 +311,8 @@ class AutomationEngine:
                 logger.exception("Error checking condition for rule '%s'", name)
                 continue
 
+            outlets = rule._outlet_list()
+
             if condition_met and not state.triggered:
                 # Condition just became true or is still pending
                 if state.condition_since is None:
@@ -271,51 +322,71 @@ class AutomationEngine:
                 elapsed = now - state.condition_since
                 if elapsed >= rule.delay:
                     # Fire the rule
+                    outlet_str = ",".join(str(o) for o in outlets)
                     event = self._add_event(
                         name, "triggered",
                         f"Input {rule.input} {rule.condition} {rule.threshold} "
-                        f"-> outlet {rule.outlet} {rule.action}"
+                        f"-> outlet(s) {outlet_str} {rule.action}"
                     )
                     new_events.append(event)
-                    logger.warning("Rule '%s' TRIGGERED: outlet %d -> %s",
-                                   name, rule.outlet, rule.action)
+                    logger.warning("Rule '%s' TRIGGERED: outlet(s) %s -> %s",
+                                   name, outlet_str, rule.action)
                     if self._command_callback:
-                        try:
-                            await self._command_callback(rule.outlet, rule.action)
+                        all_ok = True
+                        for outlet_num in outlets:
+                            try:
+                                await self._command_callback(outlet_num, rule.action)
+                            except Exception:
+                                self._command_failures += 1
+                                all_ok = False
+                                logger.exception(
+                                    "Command failed for rule '%s': outlet %d -> %s",
+                                    name, outlet_num, rule.action,
+                                )
+                        if all_ok:
                             state.triggered = True
                             state.fired_at = now
-                        except Exception:
-                            self._command_failures += 1
-                            logger.exception(
-                                "Command failed for rule '%s': outlet %d -> %s",
-                                name, rule.outlet, rule.action,
-                            )
+                            state.execution_count += 1
+                            state.last_execution = now
+                            # One-shot auto-disable
+                            if rule.schedule_type == "oneshot":
+                                rule.enabled = False
+                                self._save()
+                                logger.info("Rule '%s': oneshot completed, disabled", name)
+                        else:
                             # Reset so we retry next cycle
                             state.condition_since = None
                     else:
                         state.triggered = True
                         state.fired_at = now
+                        state.execution_count += 1
+                        state.last_execution = now
+                        if rule.schedule_type == "oneshot":
+                            rule.enabled = False
+                            self._save()
 
             elif not condition_met and state.triggered and rule.restore:
                 # Condition cleared, restore
                 restore_action = "on" if rule.action == "off" else "off"
+                outlet_str = ",".join(str(o) for o in outlets)
                 event = self._add_event(
                     name, "restored",
                     f"Input {rule.input} recovered "
-                    f"-> outlet {rule.outlet} {restore_action}"
+                    f"-> outlet(s) {outlet_str} {restore_action}"
                 )
                 new_events.append(event)
-                logger.info("Rule '%s' RESTORED: outlet %d -> %s",
-                            name, rule.outlet, restore_action)
+                logger.info("Rule '%s' RESTORED: outlet(s) %s -> %s",
+                            name, outlet_str, restore_action)
                 if self._command_callback:
-                    try:
-                        await self._command_callback(rule.outlet, restore_action)
-                    except Exception:
-                        self._command_failures += 1
-                        logger.exception(
-                            "Restore command failed for rule '%s': outlet %d -> %s",
-                            name, rule.outlet, restore_action,
-                        )
+                    for outlet_num in outlets:
+                        try:
+                            await self._command_callback(outlet_num, restore_action)
+                        except Exception:
+                            self._command_failures += 1
+                            logger.exception(
+                                "Restore command failed for rule '%s': outlet %d -> %s",
+                                name, outlet_num, restore_action,
+                            )
                 state.triggered = False
                 state.condition_since = None
                 state.fired_at = None
@@ -331,7 +402,7 @@ class AutomationEngine:
     def list_rules(self) -> list[dict[str, Any]]:
         result = []
         for name, rule in self._rules.items():
-            state = self._states[name]
+            state = self._states.get(name, RuleState())
             entry = rule.to_dict()
             entry["state"] = state.to_dict()
             result.append(entry)
@@ -368,6 +439,18 @@ class AutomationEngine:
         self._save()
         self._add_event(name, "deleted", f"Rule '{name}' deleted")
         logger.info("Deleted rule '%s'", name)
+
+    def toggle_rule(self, name: str) -> dict[str, Any]:
+        """Toggle a rule's enabled state."""
+        if name not in self._rules:
+            raise KeyError(f"Rule '{name}' not found")
+        rule = self._rules[name]
+        rule.enabled = not rule.enabled
+        self._save()
+        self._add_event(name, "toggled",
+                        f"Rule '{name}' {'enabled' if rule.enabled else 'disabled'}")
+        logger.info("Toggled rule '%s' -> enabled=%s", name, rule.enabled)
+        return {"name": name, "enabled": rule.enabled}
 
     def get_events(self) -> list[dict[str, Any]]:
         return list(reversed(self._events))

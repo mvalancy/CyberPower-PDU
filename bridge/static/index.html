@@ -1,6 +1,6 @@
 <!-- CyberPower PDU Bridge
      Created by Matthew Valancy, Valpatel Software LLC
-     Copyright 2026 MIT License
+     Copyright 2026 GPL-3.0 License
      https://github.com/mvalancy/CyberPower-PDU -->
 <!DOCTYPE html>
 <html lang="en">
@@ -8,6 +8,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberPDU</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -74,9 +75,25 @@ input,select{font-family:inherit}
 .conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block;transition:all 0.3s}
 .conn-dot.ok{background:var(--green);box-shadow:0 0 6px rgba(5,255,161,0.4)}
 .conn-dot.err{background:var(--red);box-shadow:0 0 6px rgba(255,42,109,0.4)}
+.conn-dot.warn{background:var(--amber);box-shadow:0 0 6px rgba(252,238,10,0.4)}
 .conn-label{font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.conn-status-text{font-size:10px;font-weight:500;letter-spacing:.3px;margin-left:2px}
+.conn-status-text.ok{color:var(--green)}
+.conn-status-text.err{color:var(--red)}
+.conn-status-text.warn{color:var(--amber)}
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.5}}
 .conn-dot.ok{animation:pulse-dot 2s ease-in-out infinite}
+
+/* Status Banner — shown when system has issues */
+.status-banner{display:none;padding:10px 20px;font-size:12px;border-radius:var(--radius);margin-bottom:16px;
+  border:1px solid;position:relative;z-index:1}
+.status-banner.visible{display:block}
+.status-banner.error{background:var(--red-dim);border-color:rgba(255,42,109,0.3);color:var(--red)}
+.status-banner.warning{background:var(--amber-dim);border-color:rgba(252,238,10,0.3);color:var(--amber)}
+.status-banner-title{font-weight:700;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.status-banner-issues{font-size:11px;opacity:0.9;line-height:1.6}
+.status-banner-issues li{list-style:none;padding-left:14px;position:relative}
+.status-banner-issues li::before{content:'\2022';position:absolute;left:0;color:inherit;opacity:0.6}
 
 /* Layout */
 .main{max-width:1280px;margin:0 auto;padding:24px;position:relative;z-index:1}
@@ -235,12 +252,16 @@ input,select{font-family:inherit}
 .badge-armed{background:var(--green-dim);color:var(--green)}.badge-armed::before{background:var(--green)}
 .badge-triggered{background:var(--red-dim);color:var(--red)}.badge-triggered::before{background:var(--red);box-shadow:0 0 4px var(--red)}
 .badge-pending{background:var(--amber-dim);color:var(--amber)}.badge-pending::before{background:var(--amber)}
+.badge-disabled{background:rgba(100,100,100,0.15);color:var(--text-3)}.badge-disabled::before{background:var(--text-3)}
 .rule-condition{color:var(--text-2);font-size:12px}
 .rule-actions{display:flex;gap:4px}
-.btn-sm{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;
-  color:var(--text-2);font-size:11px;font-weight:600;transition:all .1s}
-.btn-sm:hover{background:var(--surface-hi);color:var(--text);border-color:var(--border-hi)}
-.btn-sm.danger:hover{color:var(--red);border-color:var(--red)}
+.btn-sm{padding:5px 12px;border:1px solid rgba(0,240,255,0.25);border-radius:4px;background:rgba(0,240,255,0.04);
+  color:var(--cyan);font-size:11px;font-weight:700;transition:all .15s;letter-spacing:.03em;cursor:pointer}
+.btn-sm:hover{background:rgba(0,240,255,0.12);color:#fff;border-color:var(--cyan);
+  box-shadow:0 0 10px rgba(0,240,255,0.15)}
+.btn-sm.danger{border-color:rgba(255,42,109,0.25);background:rgba(255,42,109,0.04);color:var(--red)}
+.btn-sm.danger:hover{color:#fff;border-color:var(--red);background:rgba(255,42,109,0.15);
+  box-shadow:0 0 10px rgba(255,42,109,0.15)}
 .rules-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
 .card{background:linear-gradient(135deg, var(--surface-hi) 0%, var(--surface) 100%);
   border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:box-shadow 0.3s}
@@ -288,8 +309,11 @@ input,select{font-family:inherit}
 .ev-body{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .ev-tag{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:1px 6px;border-radius:3px}
 .ev-tag.triggered{background:var(--red-dim);color:var(--red)}
-.ev-tag.restored{background:var(--green-dim);color:var(--green)}
-.ev-tag.created,.ev-tag.updated,.ev-tag.deleted{background:var(--cyan-dim);color:var(--cyan)}
+.ev-tag.restored,.ev-tag.power_restore,.ev-tag.redundancy_ok,.ev-tag.load_normal{background:var(--green-dim);color:var(--green)}
+.ev-tag.created,.ev-tag.updated,.ev-tag.deleted,.ev-tag.outlet_change{background:var(--cyan-dim);color:var(--cyan)}
+.ev-tag.ats_transfer{background:var(--amber-dim);color:var(--amber)}
+.ev-tag.power_loss,.ev-tag.redundancy_lost,.ev-tag.load_warning,.ev-tag.conn_degraded,.ev-tag.conn_lost{background:var(--red-dim);color:var(--red)}
+.ev-tag.reboot{background:rgba(167,139,250,.12);color:var(--purple)}
 .ev-rule{font-weight:600;color:var(--text)}
 .ev-detail{color:var(--text-2)}
 .events-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
@@ -307,6 +331,364 @@ input,select{font-family:inherit}
 .report-bar-val{font-size:11px;color:var(--text-2);width:60px;text-align:right;flex-shrink:0}
 .report-week{font-size:12px;color:var(--text-3);margin-bottom:8px}
 .report-empty{padding:24px;text-align:center;color:var(--text-3);font-size:13px}
+
+/* Settings Panel (slide-out from right) */
+.settings-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;
+  opacity:0;pointer-events:none;transition:opacity .3s}
+.settings-overlay.open{opacity:1;pointer-events:auto}
+.settings-panel{position:fixed;top:0;right:0;width:420px;max-width:100vw;height:100vh;
+  background:var(--surface);border-left:1px solid var(--border-hi);z-index:1001;
+  transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column;overflow:hidden}
+.settings-panel.open{transform:translateX(0)}
+.settings-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;
+  border-bottom:1px solid var(--border);background:var(--surface-hi);flex-shrink:0}
+.settings-header h2{font-size:14px;font-weight:700;color:var(--cyan);letter-spacing:.05em;margin:0}
+.settings-close{background:none;border:none;color:var(--text-3);font-size:20px;cursor:pointer;
+  padding:4px 8px;transition:color .2s}
+.settings-close:hover{color:var(--text)}
+.settings-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.settings-tab{flex:1;padding:10px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text-3);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
+  background:none;border-top:none;border-left:none;border-right:none}
+.settings-tab:hover{color:var(--text-2);background:rgba(0,240,255,0.02)}
+.settings-tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.settings-body{flex:1;overflow-y:auto;padding:16px 20px}
+.settings-body::-webkit-scrollbar{width:4px}
+.settings-body::-webkit-scrollbar-track{background:transparent}
+.settings-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* PDU cards in settings */
+.pdu-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;
+  margin-bottom:8px;transition:border-color .2s}
+.pdu-card:hover{border-color:var(--border-hi)}
+.pdu-card-header{display:flex;align-items:center;justify-content:space-between}
+.pdu-card-info{display:flex;align-items:center;gap:8px}
+.pdu-card-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pdu-card-dot.healthy{background:var(--green);box-shadow:0 0 4px var(--green)}
+.pdu-card-dot.degraded,.pdu-card-dot.recovering{background:var(--amber);box-shadow:0 0 4px var(--amber)}
+.pdu-card-dot.no_data,.pdu-card-dot.unknown{background:#555}
+.pdu-card-dot.lost,.pdu-card-dot.error{background:var(--red);box-shadow:0 0 4px var(--red)}
+.pdu-card-name{font-size:13px;font-weight:600;color:var(--text)}
+.pdu-card-host{font-size:11px;color:var(--text-3);font-family:'JetBrains Mono',monospace}
+.pdu-card-status-detail{font-size:10px;color:var(--text-3);margin-top:4px;font-style:italic}
+.pdu-card-status-detail.warn{color:var(--amber)}
+.pdu-card-status-detail.err{color:var(--red)}
+.transport-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-left:6px}
+.transport-badge.snmp{background:rgba(0,240,255,0.15);color:var(--cyan);border:1px solid rgba(0,240,255,0.3)}
+.transport-badge.serial{background:rgba(5,255,161,0.15);color:var(--green);border:1px solid rgba(5,255,161,0.3)}
+.transport-badge.dual{background:rgba(255,165,0,0.15);color:#ffa500;border:1px solid rgba(255,165,0,0.3)}
+.pdu-card-actions{display:flex;gap:4px}
+.pdu-card-btn{background:none;border:1px solid var(--border);border-radius:4px;
+  color:var(--text-3);font-size:11px;padding:3px 8px;cursor:pointer;transition:all .15s}
+.pdu-card-btn:hover{color:var(--text);border-color:var(--border-hi);background:var(--surface-hi)}
+.pdu-card-btn.danger:hover{color:var(--red);border-color:var(--red)}
+.pdu-card-edit{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.pdu-card.editing .pdu-card-edit{display:block}
+.pdu-edit-field{margin-bottom:10px}
+.pdu-edit-field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--text);margin-bottom:4px}
+.pdu-edit-field input,.pdu-edit-field select{width:100%;padding:7px 10px;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:4px;background:rgba(255,255,255,0.03);color:var(--text);font-size:12px;outline:none;
+  font-family:'JetBrains Mono',monospace;transition:border-color .2s,box-shadow .2s}
+.pdu-edit-field input:focus,.pdu-edit-field select:focus{border-color:var(--cyan);
+  box-shadow:0 0 8px rgba(0,240,255,0.12);background:rgba(0,240,255,0.02)}
+.pdu-edit-field input::placeholder{color:var(--text-3);font-style:italic}
+.pdu-edit-actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+/* Grouped edit sections inside PDU card */
+.edit-group{margin-bottom:14px;padding:12px 14px;background:rgba(255,255,255,0.015);
+  border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);position:relative}
+.edit-group-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;gap:7px}
+.edit-group-title::before{content:'';display:inline-block;width:3px;height:12px;border-radius:1px}
+/* Color-coded group accents */
+.edit-group.grp-snmp{border-left:2px solid var(--cyan)}
+.edit-group.grp-snmp .edit-group-title{color:var(--cyan)}
+.edit-group.grp-snmp .edit-group-title::before{background:var(--cyan)}
+.edit-group.grp-snmp .pdu-edit-field label{color:rgba(0,240,255,0.8)}
+.edit-group.grp-serial{border-left:2px solid var(--green)}
+.edit-group.grp-serial .edit-group-title{color:var(--green)}
+.edit-group.grp-serial .edit-group-title::before{background:var(--green)}
+.edit-group.grp-serial .pdu-edit-field label{color:rgba(5,255,161,0.8)}
+.edit-group.grp-general{border-left:2px solid var(--purple)}
+.edit-group.grp-general .edit-group-title{color:var(--purple)}
+.edit-group.grp-general .edit-group-title::before{background:var(--purple)}
+.edit-group.grp-general .pdu-edit-field label{color:rgba(167,139,250,0.8)}
+.edit-group .pdu-edit-field{margin-bottom:8px}
+.edit-group .pdu-edit-field:last-of-type{margin-bottom:0}
+
+/* Add PDU wizard */
+.wizard-step{display:none}
+.wizard-step.active{display:block}
+.wizard-step-title{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:12px}
+.wizard-choice{display:flex;gap:8px;margin-bottom:12px}
+.wizard-choice-btn{flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--bg);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;
+  text-align:center;transition:all .2s}
+.wizard-choice-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,240,255,0.03)}
+.discovered-list{max-height:300px;overflow-y:auto}
+.discovered-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;margin-bottom:6px;cursor:pointer;transition:all .2s}
+.discovered-card:hover{border-color:var(--cyan)}
+.discovered-card.selected{border-color:var(--cyan);background:rgba(0,240,255,0.03)}
+.discovered-card.dimmed{opacity:0.4;cursor:default}
+.discovered-card .dc-name{font-size:12px;font-weight:600;color:var(--text)}
+.discovered-card .dc-detail{font-size:11px;color:var(--text-3);font-family:'JetBrains Mono',monospace}
+.test-result{padding:8px 12px;border-radius:4px;font-size:12px;margin-top:8px;display:none}
+.test-result.success{display:block;background:var(--green-dim);color:var(--green);border:1px solid rgba(5,255,161,0.2)}
+.test-result.fail{display:block;background:var(--red-dim);color:var(--red);border:1px solid rgba(255,42,109,0.2)}
+.wizard-summary{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;
+  font-size:12px;color:var(--text-2);margin-bottom:12px}
+.wizard-summary dt{font-weight:600;color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.wizard-summary dd{margin:0 0 6px;color:var(--text);font-family:'JetBrains Mono',monospace}
+
+/* General tab */
+.gen-section{margin-bottom:14px;padding:12px 14px;background:rgba(255,255,255,0.015);
+  border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius)}
+.gen-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;gap:7px}
+.gen-section-title::before{content:'';display:inline-block;width:3px;height:12px;border-radius:1px}
+/* Color-coded general sections */
+.gen-section.sec-polling{border-left:2px solid var(--cyan)}
+.gen-section.sec-polling .gen-section-title{color:var(--cyan)}
+.gen-section.sec-polling .gen-section-title::before{background:var(--cyan)}
+.gen-section.sec-polling .pdu-edit-field label{color:rgba(0,240,255,0.8)}
+.gen-section.sec-mqtt{border-left:2px solid var(--green)}
+.gen-section.sec-mqtt .gen-section-title{color:var(--green)}
+.gen-section.sec-mqtt .gen-section-title::before{background:var(--green)}
+.gen-section.sec-mqtt .pdu-edit-field label{color:rgba(5,255,161,0.8)}
+.gen-section.sec-auth{border-left:2px solid var(--amber)}
+.gen-section.sec-auth .gen-section-title{color:var(--amber)}
+.gen-section.sec-auth .gen-section-title::before{background:var(--amber)}
+.gen-section.sec-auth .pdu-edit-field label{color:rgba(252,238,10,0.8)}
+.gen-section.sec-info{border-left:2px solid var(--purple)}
+.gen-section.sec-info .gen-section-title{color:var(--purple)}
+.gen-section.sec-info .gen-section-title::before{background:var(--purple)}
+/* Manage tab security/network/thresholds/outlets/eventlog */
+.gen-section.sec-security{border-left:2px solid var(--red)}
+.gen-section.sec-security .gen-section-title{color:var(--red)}
+.gen-section.sec-security .gen-section-title::before{background:var(--red)}
+.gen-section.sec-network{border-left:2px solid var(--cyan)}
+.gen-section.sec-network .gen-section-title{color:var(--cyan)}
+.gen-section.sec-network .gen-section-title::before{background:var(--cyan)}
+.gen-section.sec-thresholds{border-left:2px solid var(--amber)}
+.gen-section.sec-thresholds .gen-section-title{color:var(--amber)}
+.gen-section.sec-thresholds .gen-section-title::before{background:var(--amber)}
+.gen-section.sec-outlets{border-left:2px solid var(--green)}
+.gen-section.sec-outlets .gen-section-title{color:var(--green)}
+.gen-section.sec-outlets .gen-section-title::before{background:var(--green)}
+.gen-section.sec-eventlog{border-left:2px solid var(--purple)}
+.gen-section.sec-eventlog .gen-section-title{color:var(--purple)}
+.gen-section.sec-eventlog .gen-section-title::before{background:var(--purple)}
+.gen-stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);
+  font-size:12px}
+.gen-stat:last-child{border-bottom:none}
+.gen-stat-label{color:var(--text-2);font-weight:500}
+.gen-stat-val{color:var(--text);font-family:'JetBrains Mono',monospace;font-weight:500}
+.gen-stat-val.val-good{color:var(--green)}
+.gen-stat-val.val-bad{color:var(--red)}
+.gen-input-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.gen-input-row input{width:80px;padding:7px 10px;border:1px solid rgba(255,255,255,0.08);border-radius:4px;
+  background:rgba(255,255,255,0.03);color:var(--text);font-size:12px;outline:none;
+  font-family:'JetBrains Mono',monospace;text-align:center}
+.gen-input-row input:focus{border-color:var(--cyan);box-shadow:0 0 8px rgba(0,240,255,0.12)}
+.gen-input-row label{font-size:12px;color:var(--text-2);font-weight:500}
+.gen-section .pdu-edit-field{margin-bottom:8px}
+.gen-section .pdu-edit-field:last-of-type{margin-bottom:0}
+.gen-section .pdu-edit-field input,.gen-section .pdu-edit-field select{
+  background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08)}
+.gen-restart-hint{font-size:10px;color:var(--amber);margin-left:6px;font-style:italic;font-weight:500}
+.test-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;
+  padding:2px 8px;border-radius:10px;margin-left:6px}
+.test-badge.pass{background:var(--green-dim);color:var(--green);border:1px solid rgba(5,255,161,0.2)}
+.test-badge.fail{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,42,109,0.2)}
+
+/* Rename tab */
+.rename-field{margin-bottom:14px}
+.rename-field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--text);margin-bottom:4px}
+.rename-row{display:flex;gap:6px}
+.rename-row input{flex:1;padding:7px 10px;border:1px solid rgba(255,255,255,0.08);border-radius:4px;
+  background:rgba(255,255,255,0.03);color:var(--text);font-size:12px;outline:none;transition:border-color .2s,box-shadow .2s;
+  font-family:'JetBrains Mono',monospace}
+.rename-row input:focus{border-color:var(--cyan);box-shadow:0 0 8px rgba(0,240,255,0.12)}
+.rename-row button{padding:6px 14px;border:1px solid var(--cyan);border-radius:4px;background:transparent;
+  color:var(--cyan);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;
+  letter-spacing:.03em}
+.rename-row button:hover{background:var(--cyan);color:#0a0a0f;box-shadow:0 0 12px rgba(0,240,255,0.2)}
+.rename-hint{font-size:10px;color:var(--text-3);margin-top:3px;line-height:1.4}
+
+/* Header icons */
+.header-icons{display:flex;align-items:center;gap:6px}
+.header-icon-btn{background:rgba(0,240,255,0.04);border:1px solid rgba(0,240,255,0.15);border-radius:6px;
+  color:var(--cyan);padding:6px 10px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;
+  font-size:11px;font-weight:600;letter-spacing:.03em;
+  animation:icon-glow 3s ease-in-out infinite}
+.header-icon-btn:hover{color:#fff;border-color:var(--cyan);background:rgba(0,240,255,0.12);
+  box-shadow:0 0 12px rgba(0,240,255,0.2)}
+.header-icon-label{display:inline}
+@keyframes icon-glow{0%,100%{box-shadow:0 0 4px rgba(0,240,255,0.08)}50%{box-shadow:0 0 10px rgba(0,240,255,0.18)}}
+
+/* Help Modal */
+.help-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);
+  z-index:2000;opacity:0;pointer-events:none;transition:opacity .3s;display:flex;align-items:center;justify-content:center}
+.help-overlay.open{opacity:1;pointer-events:auto}
+.help-modal{background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--radius-lg);
+  width:600px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.help-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;
+  border-bottom:1px solid var(--border);background:var(--surface-hi)}
+.help-header h2{font-size:14px;font-weight:700;color:var(--cyan);letter-spacing:.05em;margin:0}
+.help-body{flex:1;overflow-y:auto;padding:0}
+.help-body::-webkit-scrollbar{width:4px}
+.help-body::-webkit-scrollbar-track{background:transparent}
+.help-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.help-section{border-bottom:1px solid var(--border)}
+.help-section:last-child{border-bottom:none}
+.help-section-header{padding:14px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+  transition:background .15s}
+.help-section-header:hover{background:rgba(0,240,255,0.02)}
+.help-section-title{font-size:13px;font-weight:600;color:var(--text)}
+.help-section-arrow{color:var(--text-3);font-size:12px;transition:transform .2s}
+.help-section.open .help-section-arrow{transform:rotate(90deg)}
+.help-section-content{display:none;padding:0 20px 14px;font-size:12px;line-height:1.7;color:var(--text-2)}
+.help-section.open .help-section-content{display:block}
+.help-section-content p{margin-bottom:8px}
+.help-section-content ul{padding-left:16px;margin-bottom:8px}
+.help-section-content li{margin-bottom:4px}
+.help-section-content code{background:var(--surface-3);padding:1px 5px;border-radius:3px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--cyan)}
+.help-section-content a{color:var(--cyan);text-decoration:none}
+.help-section-content a:hover{text-decoration:underline}
+
+/* Inline edit buttons (ATS inputs, device name) */
+.inline-edit-btn{background:none;border:none;color:var(--text-3);padding:0 2px;font-size:11px;
+  cursor:pointer;opacity:.4;transition:opacity .15s,color .15s;vertical-align:middle;margin-left:4px}
+.inline-edit-btn:hover{opacity:1;color:var(--cyan)}
+.header-device-name{cursor:default;display:flex;align-items:center;gap:2px}
+
+/* Find/Test buttons in settings */
+.find-host-btn,.find-serial-btn,.test-conn-btn{padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;
+  color:var(--text-2);font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.find-host-btn:hover,.find-serial-btn:hover{background:var(--cyan-dim);color:var(--cyan);border-color:var(--cyan)}
+.test-conn-btn:hover{background:var(--green-dim);color:var(--green);border-color:var(--green)}
+.test-inline-result{font-size:11px;margin-top:6px;padding:6px 10px;border-radius:4px;display:none}
+.test-inline-result.visible{display:block}
+.test-inline-result.success{background:var(--green-dim);color:var(--green);border:1px solid rgba(5,255,161,0.2)}
+.test-inline-result.fail{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,42,109,0.2)}
+.test-inline-result.loading{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border)}
+.field-hint{font-size:10px;color:rgba(255,255,255,0.25);margin-top:3px;line-height:1.4;font-style:italic}
+
+/* Toast Notifications */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:5000;display:flex;flex-direction:column-reverse;gap:8px;
+  pointer-events:none;max-width:380px}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius);
+  font-size:12px;font-weight:500;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.5);
+  animation:toast-in .3s ease forwards;border:1px solid var(--border)}
+.toast.exit{animation:toast-out .25s ease forwards}
+.toast-success{background:rgba(5,60,40,.95);color:var(--green);border-color:rgba(5,255,161,.2)}
+.toast-error{background:rgba(60,10,25,.95);color:var(--red);border-color:rgba(255,42,109,.2)}
+.toast-info{background:rgba(10,20,40,.95);color:var(--cyan);border-color:rgba(0,240,255,.2)}
+.toast-icon{flex-shrink:0;font-size:16px}
+.toast-msg{flex:1}
+.toast-close{background:none;border:none;color:inherit;opacity:.6;cursor:pointer;padding:2px;font-size:14px;flex-shrink:0}
+.toast-close:hover{opacity:1}
+@keyframes toast-in{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toast-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(12px) scale(.96)}}
+
+/* Loading / spinner states */
+.btn.loading,.btn-sm.loading,.pop-btn.loading,.pdu-card-btn.loading,.rename-row button.loading,
+.wizard-choice-btn.loading,.header-icon-btn.loading{pointer-events:none;opacity:.6;position:relative}
+.btn.loading::after,.btn-sm.loading::after,.pop-btn.loading::after,.pdu-card-btn.loading::after,
+.rename-row button.loading::after,.wizard-choice-btn.loading::after{content:'';position:absolute;
+  width:12px;height:12px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;
+  animation:btn-spin .6s linear infinite;right:6px;top:50%;margin-top:-6px}
+@keyframes btn-spin{to{transform:rotate(360deg)}}
+
+/* Focus-visible styles */
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--cyan);
+  outline-offset:2px;border-radius:2px}
+
+/* Mobile Responsiveness */
+@media(max-width:600px){
+  .header{flex-direction:column;gap:8px;padding:12px 16px;align-items:flex-start}
+  .header-device{width:100%;flex-wrap:wrap;gap:6px;font-size:12px}
+  .header-brand{font-size:13px}
+  .header-sub{display:none}
+  .header-icons{margin-left:auto}
+  .header-icon-label{display:none}
+  .main{padding:12px}
+  .outlets-grid{grid-template-columns:repeat(auto-fill,minmax(85px,1fr));gap:6px}
+  .outlet-tile{padding:8px}
+  .outlet-tile .o-num{font-size:12px}
+  .outlet-tile .o-name{font-size:9px}
+  .ats-body{grid-template-columns:1fr;gap:12px}
+  .ats-flow{min-height:100px;order:-1}
+  .ats-leds{flex-wrap:wrap;gap:12px 20px;padding:12px}
+  .chart-row{grid-template-columns:1fr}
+  .chart-controls{gap:4px}
+  .range-btn{padding:3px 8px;font-size:10px}
+  .rule-form{grid-template-columns:1fr}
+  .rules-table th:nth-child(4),.rules-table td:nth-child(4),
+  .rules-table th:nth-child(5),.rules-table td:nth-child(5){display:none}
+  .settings-panel{width:100%}
+  .help-modal{max-width:95vw;max-height:90vh}
+  .report-summary{grid-template-columns:repeat(2,1fr)}
+  .ev-item{grid-template-columns:60px auto;gap:4px;padding:6px 8px;font-size:11px}
+  .section-head{flex-wrap:wrap;gap:8px}
+  .toast-container{right:8px;left:8px;bottom:12px;max-width:100%}
+}
+@media(max-width:400px){
+  .outlets-grid{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))}
+  .ats-input-block .inp-voltage{font-size:22px}
+  .ats-input-block .inp-metrics{grid-template-columns:1fr 1fr 1fr;gap:4px}
+  .ats-output-stats{grid-template-columns:1fr 1fr}
+  .out-stat .os-val{font-size:14px}
+  .report-summary{grid-template-columns:1fr 1fr}
+}
+
+/* Restart banner */
+.restart-banner{display:none;padding:10px 20px;font-size:12px;border-radius:var(--radius);margin-bottom:16px;
+  border:1px solid rgba(252,238,10,0.3);background:var(--amber-dim);color:var(--amber);
+  align-items:center;justify-content:space-between;gap:12px;position:relative;z-index:1}
+.restart-banner.visible{display:flex}
+.restart-banner-text{flex:1}
+.restart-banner-btn{background:var(--amber);color:#000;border:none;padding:6px 16px;border-radius:var(--radius);
+  font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.restart-banner-btn:hover{filter:brightness(1.1)}
+
+/* Restart overlay */
+.restart-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);
+  z-index:10001;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.restart-overlay.visible{display:flex}
+.restart-overlay .spinner{width:40px;height:40px;border:3px solid transparent;border-top-color:var(--cyan);
+  border-radius:50%;animation:btn-spin .6s linear infinite}
+.restart-overlay .restart-text{color:var(--cyan);font-size:16px;font-weight:600}
+
+/* First-run overlay */
+.firstrun-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);
+  z-index:9000;display:none;align-items:center;justify-content:center}
+.firstrun-overlay.open{display:flex}
+.firstrun-modal{background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--radius-lg);
+  padding:40px;max-width:480px;text-align:center}
+.firstrun-modal h2{color:var(--cyan);font-size:20px;margin-bottom:12px}
+.firstrun-modal p{color:var(--text-2);font-size:13px;margin-bottom:20px;line-height:1.6}
+.firstrun-modal .btn{margin-top:8px}
+
+/* Log viewer */
+.log-viewer{max-height:400px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px}
+.log-entry{padding:2px 4px;border-bottom:1px solid var(--border);white-space:pre-wrap;word-break:break-all}
+.log-entry.ERROR{color:var(--red)}.log-entry.WARNING{color:var(--amber)}
+.log-entry.DEBUG{color:var(--text-3)}.log-entry.INFO{color:var(--text)}
+.log-controls{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+.log-controls select,.log-controls input{background:var(--surface-hi);border:1px solid var(--border);
+  color:var(--text);padding:4px 8px;border-radius:var(--radius);font-size:11px}
+.log-controls label{font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px}
 </style>
 </head>
 <body>
@@ -319,16 +701,42 @@ input,select{font-family:inherit}
   </div>
   <div class="header-device">
     <select id="pdu-selector" style="display:none;background:var(--surface-hi);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer" onchange="switchPDU(this.value)"></select>
-    <span id="device-name">--</span>
+    <span class="header-device-name"><span id="device-name">--</span><button class="inline-edit-btn" onclick="openSettings();switchSettingsTab(document.querySelector('[data-tab=tab-rename]'),'tab-rename')" title="Edit device name">&#9998;</button></span>
     <code id="device-id">--</code>
     <span class="conn-label">API</span>
     <span class="conn-dot err" id="conn-dot" title="Disconnected"></span>
+    <span class="conn-status-text err" id="conn-text">Offline</span>
     <span class="conn-label">MQTT</span>
     <span class="conn-dot err" id="mqtt-dot" title="MQTT Disconnected"></span>
+    <span class="conn-status-text err" id="mqtt-text">Offline</span>
+    <div class="header-icons">
+      <button class="header-icon-btn" onclick="openSettings()" title="Configure PDUs, poll settings, and rename devices">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="header-icon-label">Settings</span>
+      </button>
+      <button class="header-icon-btn" onclick="openHelp()" title="Dashboard guide, SNMP/MQTT basics, and troubleshooting">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span class="header-icon-label">Help</span>
+      </button>
+    </div>
   </div>
 </div>
 
 <div class="main">
+
+  <!-- Status Banner (shown when system has issues) -->
+  <div class="status-banner" id="status-banner">
+    <div class="status-banner-title" id="status-banner-title">System Status</div>
+    <ul class="status-banner-issues" id="status-banner-issues"></ul>
+  </div>
+  <div id="restart-banner" class="restart-banner">
+    <div class="restart-banner-text"><strong>Restart required</strong> — <span id="restart-reason">Settings changed</span></div>
+    <button class="restart-banner-btn" onclick="restartBridge()">Restart Now</button>
+  </div>
+  <div id="security-banner" class="status-banner warning" style="display:none;cursor:pointer" onclick="openSettings();switchSettingsTab(document.querySelector('[data-tab=tab-manage]'),'tab-manage')">
+    <div class="status-banner-title">&#x26A0; Security Warning</div>
+    <ul class="status-banner-issues"><li id="security-banner-text">PDU is using factory default credentials (cyber/cyber). Change the password in Settings &gt; Manage &gt; Security.</li></ul>
+  </div>
 
   <!-- Device Info Panel (shown when identity data available) -->
   <div class="section" id="device-info-section" style="display:none">
@@ -358,7 +766,7 @@ input,select{font-family:inherit}
         <div class="ats-col">
           <div class="ats-col-label">Sources</div>
           <div class="ats-input-block" id="ats-input-a">
-            <div class="inp-label"><span class="inp-tag inp-tag-a">A</span> Input A &mdash; Utility</div>
+            <div class="inp-label"><span class="inp-tag inp-tag-a">A</span> Input A &mdash; Utility<button class="inline-edit-btn" onclick="openSettings();switchSettingsTab(document.querySelector('[data-tab=tab-rename]'),'tab-rename')" title="Rename this source">&#9998;</button></div>
             <div class="inp-voltage" id="inp-a-voltage">--</div>
             <div class="inp-sub" id="inp-a-sub"><span class="inp-status-dot"></span><span class="inp-sub-text">--</span></div>
             <div class="inp-metrics">
@@ -368,7 +776,7 @@ input,select{font-family:inherit}
             </div>
           </div>
           <div class="ats-input-block" id="ats-input-b">
-            <div class="inp-label"><span class="inp-tag inp-tag-b">B</span> Input B &mdash; Backup</div>
+            <div class="inp-label"><span class="inp-tag inp-tag-b">B</span> Input B &mdash; Backup<button class="inline-edit-btn" onclick="openSettings();switchSettingsTab(document.querySelector('[data-tab=tab-rename]'),'tab-rename')" title="Rename this source">&#9998;</button></div>
             <div class="inp-voltage" id="inp-b-voltage">--</div>
             <div class="inp-sub" id="inp-b-sub"><span class="inp-status-dot"></span><span class="inp-sub-text">--</span></div>
             <div class="inp-metrics">
@@ -427,11 +835,11 @@ input,select{font-family:inherit}
 
       <!-- LED Bar -->
       <div class="ats-leds">
-        <div class="led"><div class="led-bulb off" id="led-a-status"></div><div class="led-label">A Status</div></div>
-        <div class="led"><div class="led-bulb off" id="led-a-selected"></div><div class="led-label">A Selected</div></div>
-        <div class="led"><div class="led-bulb off" id="led-output"></div><div class="led-label">Output</div></div>
-        <div class="led"><div class="led-bulb off" id="led-b-selected"></div><div class="led-label">B Selected</div></div>
-        <div class="led"><div class="led-bulb off" id="led-b-status"></div><div class="led-label">B Status</div></div>
+        <div class="led" title="Source A voltage status — green = normal, red = failed"><div class="led-bulb off" id="led-a-status"></div><div class="led-label">A Status</div></div>
+        <div class="led" title="Source A is the currently active input"><div class="led-bulb off" id="led-a-selected"></div><div class="led-label">A Selected</div></div>
+        <div class="led" title="Output bus is delivering power"><div class="led-bulb off" id="led-output"></div><div class="led-label">Output</div></div>
+        <div class="led" title="Source B is the currently active input"><div class="led-bulb off" id="led-b-selected"></div><div class="led-label">B Selected</div></div>
+        <div class="led" title="Source B voltage status — green = normal, red = failed"><div class="led-bulb off" id="led-b-status"></div><div class="led-label">B Status</div></div>
       </div>
     </div>
   </div>
@@ -449,12 +857,12 @@ input,select{font-family:inherit}
     <div class="section-head">
       <span class="section-title">History</span>
       <div class="chart-controls">
-        <button class="range-btn active" data-range="1h" onclick="setChartRange('1h',this)">1H</button>
-        <button class="range-btn" data-range="6h" onclick="setChartRange('6h',this)">6H</button>
-        <button class="range-btn" data-range="24h" onclick="setChartRange('24h',this)">24H</button>
-        <button class="range-btn" data-range="7d" onclick="setChartRange('7d',this)">7D</button>
-        <button class="range-btn" data-range="30d" onclick="setChartRange('30d',this)">30D</button>
-        <button class="btn-sm export-btn" onclick="exportCSV()">Export CSV</button>
+        <button class="range-btn active" data-range="1h" onclick="setChartRange('1h',this)" title="Last 1 hour">1H</button>
+        <button class="range-btn" data-range="6h" onclick="setChartRange('6h',this)" title="Last 6 hours">6H</button>
+        <button class="range-btn" data-range="24h" onclick="setChartRange('24h',this)" title="Last 24 hours">24H</button>
+        <button class="range-btn" data-range="7d" onclick="setChartRange('7d',this)" title="Last 7 days">7D</button>
+        <button class="range-btn" data-range="30d" onclick="setChartRange('30d',this)" title="Last 30 days">30D</button>
+        <button class="btn-sm export-btn" onclick="exportCSV()" title="Download chart data as CSV">Export CSV</button>
       </div>
     </div>
     <div class="charts-wrap">
@@ -479,7 +887,7 @@ input,select{font-family:inherit}
   <div class="section">
     <div class="section-head">
       <span class="section-title">Automation Rules</span>
-      <button class="btn-add" onclick="toggleForm()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Rule</button>
+      <button class="btn-add" onclick="toggleForm()" title="Create a new automation rule"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Rule</button>
     </div>
     <div class="rule-form-wrap" id="rule-form-wrap">
       <div class="rule-form-title">
@@ -487,7 +895,7 @@ input,select{font-family:inherit}
         <button class="btn-sm" onclick="closeForm()">&times;</button>
       </div>
       <form class="rule-form" id="rule-form" onsubmit="return submitRule(event)">
-        <div class="field"><label>Name</label><input id="f-name" required pattern="[a-zA-Z0-9_-]+" placeholder="ecoflow_anti_feedback"></div>
+        <div class="field"><label>Name</label><input id="f-name" required pattern="[a-zA-Z0-9_-]+" placeholder="ecoflow_anti_feedback" title="Letters, numbers, hyphens, and underscores only"></div>
         <div class="field"><label>Input</label><select id="f-input"><option value="1">Input A (1)</option><option value="2">Input B (2)</option><option value="0">N/A (time)</option></select></div>
         <div class="field">
           <label>Condition</label>
@@ -506,10 +914,24 @@ input,select{font-family:inherit}
           <input id="f-threshold" type="text" value="10" required>
           <div class="threshold-hint" id="threshold-hint"></div>
         </div>
-        <div class="field"><label>Target Outlet</label><input id="f-outlet" type="number" min="1" max="10" value="1" required></div>
+        <div class="field"><label>Target Outlets</label><input id="f-outlet" type="text" value="1" required placeholder="1,2,3 or 1-4" title="Comma-separated or range (e.g. 1,3,5 or 1-8)"><div class="field-hint" style="font-size:10px;color:var(--text-3);margin-top:2px">Comma-separated or range (e.g. 1,3,5 or 1-8)</div></div>
         <div class="field"><label>Action</label><select id="f-action"><option value="off">Turn OFF</option><option value="on">Turn ON</option></select></div>
         <div class="field"><label>Delay (sec)</label><input id="f-delay" type="number" min="0" value="5" required></div>
         <div class="field-check"><input id="f-restore" type="checkbox" checked><label for="f-restore">Restore on recovery</label></div>
+        <div class="field-check"><input id="f-oneshot" type="checkbox"><label for="f-oneshot">One-shot (auto-disable after firing)</label></div>
+        <div class="field field-wide" style="grid-column:1/-1">
+          <label>Days of Week</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="0"> Mon</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="1"> Tue</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="2"> Wed</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="3"> Thu</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="4"> Fri</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="5"> Sat</label>
+            <label style="font-size:11px;cursor:pointer"><input type="checkbox" name="dow" value="6"> Sun</label>
+          </div>
+          <div class="field-hint" style="font-size:10px;color:var(--text-3);margin-top:2px">Leave all unchecked for every day</div>
+        </div>
         <div class="form-btns">
           <button type="submit" class="btn btn-primary" id="form-submit">Create Rule</button>
           <button type="button" class="btn btn-ghost" onclick="closeForm()">Cancel</button>
@@ -518,7 +940,7 @@ input,select{font-family:inherit}
     </div>
     <div class="card" style="margin-top:8px">
       <table class="rules-table">
-        <thead><tr><th>Rule</th><th>Condition</th><th>Target</th><th>Delay</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Rule</th><th>Condition</th><th>Target</th><th>Delay</th><th>Status</th><th>Runs</th><th>Enabled</th><th></th></tr></thead>
         <tbody id="rules-body"><tr><td colspan="6" class="rules-empty">No automation rules configured</td></tr></tbody>
       </table>
     </div>
@@ -555,9 +977,601 @@ input,select{font-family:inherit}
     <a href="https://valpatel.com" style="color:var(--cyan);text-decoration:none" target="_blank">Valpatel Software LLC</a>
     &nbsp;|&nbsp;
     <a href="https://github.com/mvalancy/CyberPower-PDU" style="color:var(--cyan);text-decoration:none" target="_blank">GitHub</a>
-    <div style="margin-top:4px;color:var(--text-3);opacity:0.6">&copy; 2026 MIT License</div>
+    <div style="margin-top:4px;color:var(--text-3);opacity:0.6">&copy; 2026 GPL-3.0 License</div>
   </div>
 
+</div>
+
+<!-- Toast Notifications -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Settings Panel (slide-out) -->
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settings-panel" role="dialog" aria-label="Settings">
+  <div class="settings-header">
+    <h2>SETTINGS</h2>
+    <button class="settings-close" onclick="closeSettings()">&times;</button>
+  </div>
+  <div class="settings-tabs">
+    <button class="settings-tab active" data-tab="tab-pdus" onclick="switchSettingsTab(this,'tab-pdus')">PDUs</button>
+    <button class="settings-tab" data-tab="tab-general" onclick="switchSettingsTab(this,'tab-general')">General</button>
+    <button class="settings-tab" data-tab="tab-rename" onclick="switchSettingsTab(this,'tab-rename')">Rename</button>
+    <button class="settings-tab" data-tab="tab-manage" onclick="switchSettingsTab(this,'tab-manage')">Manage</button>
+    <button class="settings-tab" data-tab="tab-logs" onclick="switchSettingsTab(this,'tab-logs')">Logs</button>
+  </div>
+  <div class="settings-body">
+    <!-- Tab: PDUs -->
+    <div class="tab-content active" id="tab-pdus">
+      <div id="pdu-cards-list"></div>
+      <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="startAddWizard()">+ Add PDU</button>
+
+      <!-- Add PDU Wizard -->
+      <div id="wizard-wrap" style="display:none;margin-top:16px">
+        <div class="wizard-step active" id="wiz-step-1">
+          <div class="wizard-step-title">Step 1: How do you want to add a PDU?</div>
+          <div class="wizard-choice">
+            <button class="wizard-choice-btn" onclick="wizardScan()">Scan Network</button>
+            <button class="wizard-choice-btn" onclick="wizardScanSerial()">Scan Serial Ports</button>
+            <button class="wizard-choice-btn" onclick="wizardManual()">Enter Manually</button>
+          </div>
+          <button class="btn-sm" onclick="cancelWizard()">Cancel</button>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-scan">
+          <div class="wizard-step-title">Step 2: Select a discovered PDU</div>
+          <div id="wiz-scan-ifaces" style="font-size:11px;color:var(--text-3);margin-bottom:6px"></div>
+          <div id="wiz-scan-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px">Scanning...</div>
+          <div class="discovered-list" id="wiz-discovered"></div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn-sm" onclick="wizardGoStep('wiz-step-1')">Back</button>
+            <button class="btn btn-primary" id="wiz-scan-next" disabled onclick="wizardToConfig()">Next</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-serial-scan">
+          <div class="wizard-step-title">Step 2: Select a serial PDU</div>
+          <div id="wiz-serial-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px">Scanning serial ports...</div>
+          <div class="discovered-list" id="wiz-serial-discovered"></div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn-sm" onclick="wizardGoStep('wiz-step-1')">Back</button>
+            <button class="btn btn-primary" id="wiz-serial-next" disabled onclick="wizardToConfig()">Next</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-manual">
+          <div class="wizard-step-title">Step 2: Enter PDU details</div>
+          <div class="pdu-edit-field"><label>Connection Type</label>
+            <select id="wiz-conn-type" onchange="wizardToggleConnType()" style="background:var(--bg-2);color:var(--text-1);border:1px solid var(--border);border-radius:4px;padding:4px 8px">
+              <option value="snmp">SNMP (Network)</option>
+              <option value="serial">Serial Port</option>
+            </select>
+          </div>
+          <div id="wiz-snmp-fields">
+            <div class="pdu-edit-field"><label>Host / IP</label><input id="wiz-host" placeholder="192.168.1.100"></div>
+            <div class="pdu-edit-field"><label>SNMP Port</label><input id="wiz-port" type="number" value="161"></div>
+            <div class="pdu-edit-field"><label>Community Read</label><input id="wiz-comm-read" value="public"></div>
+          </div>
+          <div id="wiz-serial-fields" style="display:none">
+            <div class="pdu-edit-field"><label>Serial Port</label><input id="wiz-serial-port" placeholder="/dev/ttyUSB3"></div>
+            <div class="pdu-edit-field"><label>Baud Rate</label><input id="wiz-serial-baud" type="number" value="9600"></div>
+            <div class="pdu-edit-field"><label>Username</label><input id="wiz-serial-user" value="cyber"></div>
+            <div class="pdu-edit-field"><label>Password</label><input id="wiz-serial-pass" type="password" value="cyber" placeholder="(serial password)"></div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn-sm" onclick="wizardGoStep('wiz-step-1')">Back</button>
+            <button class="btn btn-primary" onclick="wizardToConfig()">Next</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-config">
+          <div class="wizard-step-title">Step 3: Configure</div>
+          <div class="pdu-edit-field"><label>Device ID</label><input id="wiz-device-id" placeholder="rack1-pdu"></div>
+          <div class="pdu-edit-field"><label>Label</label><input id="wiz-label" placeholder="Server Room PDU"></div>
+          <div id="wiz-config-snmp-fields">
+            <div class="pdu-edit-field"><label>Community Write</label><input id="wiz-comm-write" value="private"></div>
+          </div>
+          <button class="btn-sm" style="margin-top:4px" onclick="wizardTest()">Test Connection</button>
+          <div class="test-result" id="wiz-test-result"></div>
+          <div style="display:flex;gap:6px;margin-top:12px">
+            <button class="btn-sm" onclick="wizardGoBack()">Back</button>
+            <button class="btn btn-primary" onclick="wizardConfirm()">Next</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-confirm">
+          <div class="wizard-step-title">Step 4: Confirm &amp; Save</div>
+          <dl class="wizard-summary" id="wiz-summary"></dl>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sm" onclick="wizardGoStep('wiz-step-config')">Back</button>
+            <button class="btn btn-primary" onclick="wizardSave()">Save PDU</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="wiz-step-security">
+          <div class="wizard-step-title">Step 5: Security Check</div>
+          <div id="wiz-security-status" style="padding:12px;border-radius:var(--radius);margin-bottom:12px;font-size:12px">
+            <div style="color:var(--text-3)">Checking default credentials...</div>
+          </div>
+          <div id="wiz-security-form" style="display:none;padding:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);margin-bottom:12px">
+            <div class="pdu-edit-field"><label>Account</label>
+              <select id="wiz-pw-account"><option value="admin">Admin</option><option value="viewer">Viewer</option></select>
+            </div>
+            <div class="pdu-edit-field"><label>New Password</label><input id="wiz-pw-new" type="password" placeholder="New password"></div>
+            <div class="pdu-edit-field"><label>Confirm Password</label><input id="wiz-pw-confirm" type="password" placeholder="Confirm password"></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn btn-primary" onclick="wizardChangePassword()">Change Password Now</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-primary" onclick="wizardFinish()">Done</button>
+            <button class="btn-sm" id="wiz-skip-security" style="display:none" onclick="wizardFinish()">Skip for Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: General -->
+    <div class="tab-content" id="tab-general">
+
+      <div class="gen-section sec-polling">
+        <div class="gen-section-title">Polling</div>
+        <div class="pdu-edit-field"><label>Poll Interval</label>
+          <div class="gen-input-row">
+            <input type="number" id="gen-poll-interval" min="1" max="300" value="5" style="width:70px" title="How often the bridge reads data from your PDU">
+            <label>seconds</label>
+          </div>
+          <div class="field-hint">How often the bridge polls your PDU. Lower = more responsive, higher = less network load. Default: 5s</div>
+        </div>
+        <div class="pdu-edit-field"><label>History Retention</label>
+          <div class="gen-input-row">
+            <input type="number" id="gen-retention-days" min="1" max="365" value="60" style="width:70px" title="How many days of history to keep">
+            <label>days</label>
+          </div>
+          <div class="field-hint">How many days of data to store. Older data is auto-pruned. Default: 60</div>
+        </div>
+        <div class="pdu-edit-field"><label>Log Level</label>
+          <select id="gen-log-level" title="Bridge logging verbosity">
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO" selected>INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+          <div class="field-hint">Logging verbosity. DEBUG is verbose, ERROR is quietest. Default: INFO</div>
+        </div>
+        <button class="btn-sm" onclick="saveGeneralSettings()" style="margin-top:6px">Save</button>
+      </div>
+
+      <div class="gen-section sec-mqtt">
+        <div class="gen-section-title">MQTT Broker</div>
+        <div class="pdu-edit-field"><label>Broker Host</label><input id="gen-mqtt-host" placeholder="mosquitto" title="MQTT broker hostname or IP"><div class="field-hint">Hostname or IP of your MQTT broker (default: mosquitto)</div></div>
+        <div class="pdu-edit-field"><label>Port</label><input id="gen-mqtt-port" type="number" min="1" max="65535" placeholder="1883" style="width:100px" title="MQTT broker port"><div class="field-hint">Default: 1883 (TLS: 8883)</div></div>
+        <div class="pdu-edit-field"><label>Username</label><input id="gen-mqtt-user" placeholder="(optional)" title="MQTT auth username"><div class="field-hint">Leave empty if no auth required</div></div>
+        <div class="pdu-edit-field"><label>Password</label><input id="gen-mqtt-pass" type="password" placeholder="(optional)" title="MQTT auth password"><div class="field-hint">Leave empty if no auth required</div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <button class="btn-sm" onclick="saveMqttSettings()">Save MQTT</button>
+          <button class="btn-sm" onclick="testMqttConnection()">Test Connection</button>
+          <span id="gen-mqtt-test-result"></span>
+          <span id="gen-mqtt-restart-hint" class="gen-restart-hint"></span>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">
+          <div class="gen-stat"><span class="gen-stat-label">Connected</span><span class="gen-stat-val" id="gen-mqtt-connected">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Reconnects</span><span class="gen-stat-val" id="gen-mqtt-reconnects">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Publishes</span><span class="gen-stat-val" id="gen-mqtt-publishes">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Errors</span><span class="gen-stat-val" id="gen-mqtt-errors">--</span></div>
+        </div>
+      </div>
+
+      <div class="gen-section sec-auth">
+        <div class="gen-section-title">Web Authentication</div>
+        <div class="pdu-edit-field"><label>Username</label><input id="gen-auth-user" placeholder="admin" title="Web dashboard login username"><div class="field-hint">Username for the web dashboard login</div></div>
+        <div class="pdu-edit-field"><label>Password</label><input id="gen-auth-pass" type="password" placeholder="(empty = auth disabled)" title="Set a password to enable login"><div class="field-hint">Set a password to require login. Leave empty to disable authentication</div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <button class="btn-sm" onclick="saveAuthSettings()">Save Auth</button>
+          <span id="gen-auth-restart-hint" class="gen-restart-hint"></span>
+        </div>
+      </div>
+
+      <div class="gen-section sec-info">
+        <div class="gen-section-title">Bridge Info</div>
+        <div class="gen-stat"><span class="gen-stat-label">PDU Count</span><span class="gen-stat-val" id="gen-pdu-count">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Uptime</span><span class="gen-stat-val" id="gen-uptime">--</span></div>
+      </div>
+
+      <div class="gen-section sec-advanced">
+        <div class="gen-section-title">Advanced</div>
+        <div class="settings-row"><label>SNMP Timeout (seconds)</label><input id="gen-snmp-timeout" type="number" step="0.5" min="0.5" max="30" value="2.0" class="settings-input"></div>
+        <div class="settings-row"><label>SNMP Retries</label><input id="gen-snmp-retries" type="number" min="0" max="5" value="1" class="settings-input"></div>
+        <div class="settings-row"><label>DHCP Recovery</label><select id="gen-recovery-enabled" class="settings-input"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+        <div class="settings-row"><label>Session Timeout (seconds)</label><input id="gen-session-timeout" type="number" min="60" max="604800" value="86400" class="settings-input"></div>
+        <div class="settings-actions"><button class="btn btn-primary" onclick="saveAdvancedSettings()">Save Advanced</button></div>
+      </div>
+      <div class="gen-section sec-sysinfo">
+        <div class="gen-section-title">System Info</div>
+        <div class="gen-stat"><span class="gen-stat-label">Version</span><span class="gen-stat-val" id="gen-version">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Python</span><span class="gen-stat-val" id="gen-python">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Uptime</span><span class="gen-stat-val" id="gen-uptime-full">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Database Size</span><span class="gen-stat-val" id="gen-db-size">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">PDU Count</span><span class="gen-stat-val" id="gen-info-pdu-count">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Total Polls</span><span class="gen-stat-val" id="gen-total-polls">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">MQTT Status</span><span class="gen-stat-val" id="gen-info-mqtt">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">SSE Clients</span><span class="gen-stat-val" id="gen-info-sse">--</span></div>
+        <div class="gen-stat"><span class="gen-stat-label">Environment</span><span class="gen-stat-val" id="gen-info-env">--</span></div>
+      </div>
+      <div class="gen-section sec-backup">
+        <div class="gen-section-title">Backup &amp; Restore</div>
+        <p style="font-size:11px;color:var(--text-3);margin-bottom:8px">Export all configuration (PDUs, settings, rules, outlet names) as a single JSON file.</p>
+        <div class="settings-actions" style="gap:8px">
+          <button class="btn btn-primary" onclick="window.location='/api/system/backup'">Export Backup</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('restore-file-input').click()">Import Backup</button>
+          <input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="restoreBackup(this)">
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Tab: Rename -->
+    <div class="tab-content" id="tab-rename">
+      <div class="rename-field">
+        <label>Device Name (SNMP)</label>
+        <div class="rename-row">
+          <input id="rename-device-name" placeholder="CyberPower PDU" title="The name stored on the PDU hardware itself">
+          <button onclick="saveDeviceName()">Save</button>
+        </div>
+        <div class="rename-hint">Changes the name stored on the PDU itself via SNMP. This is the name shown in the header and in Home Assistant.</div>
+      </div>
+      <div class="rename-field">
+        <label>Device Location (SNMP)</label>
+        <div class="rename-row">
+          <input id="rename-device-location" placeholder="Server Room Rack A" title="Physical location stored on the PDU hardware">
+          <button onclick="saveDeviceLocation()">Save</button>
+        </div>
+        <div class="rename-hint">Sets the physical location on the PDU hardware. Useful for identifying PDUs in multi-rack setups. Shows in the device info panel.</div>
+      </div>
+      <div style="border-top:1px solid var(--border);margin:16px 0;padding-top:12px">
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em">ATS Source Labels</div>
+        <div class="rename-field">
+          <label>Source A Label</label>
+          <div class="rename-row">
+            <input id="rename-source-a" placeholder="Utility" title="Custom name for Input A (e.g., Grid, Utility, Solar)">
+            <button onclick="saveSourceLabels()">Save</button>
+          </div>
+          <div class="rename-hint">Customize what &quot;Input A&quot; is called on the dashboard. Common: &quot;Grid&quot;, &quot;Utility&quot;, &quot;Solar&quot;. Saved in your browser only.</div>
+        </div>
+        <div class="rename-field">
+          <label>Source B Label</label>
+          <div class="rename-row">
+            <input id="rename-source-b" placeholder="Backup" title="Custom name for Input B (e.g., EcoFlow, Backup, Generator)">
+            <button onclick="saveSourceLabels()">Save</button>
+          </div>
+          <div class="rename-hint">Customize what &quot;Input B&quot; is called on the dashboard. Common: &quot;EcoFlow&quot;, &quot;Battery&quot;, &quot;Generator&quot;. Saved in your browser only.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Management (serial-specific) -->
+    <div class="tab-content" id="tab-manage">
+      <div id="mgmt-header" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius)">
+        <span id="mgmt-device-label" style="font-size:13px;font-weight:600;color:var(--text)">--</span>
+        <span id="mgmt-transport-badge" class="transport-badge">--</span>
+      </div>
+      <div id="mgmt-no-serial-banner" style="display:none;padding:12px;margin-bottom:12px;background:var(--amber-dim);border:1px solid rgba(252,238,10,0.2);border-radius:var(--radius);font-size:12px;color:var(--amber)">
+        Serial console required for PDU management. Configure a serial port in PDU settings to enable security, network config, thresholds, outlet config, and event log management.
+      </div>
+      <div class="gen-section sec-security">
+        <div class="gen-section-title">Security</div>
+        <div id="mgmt-security-status" style="margin-bottom:10px;font-size:12px;color:var(--text-2);font-weight:500">--</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="checkDefaultCreds()">Check Default Credentials</button>
+          <button class="btn-sm" onclick="showChangePasswordModal()">Change Password</button>
+        </div>
+        <div id="mgmt-password-form" style="display:none;margin-top:12px;padding:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius)">
+          <div class="pdu-edit-field"><label>Account</label>
+            <select id="mgmt-pw-account">
+              <option value="admin">Admin</option><option value="viewer">Viewer</option>
+            </select>
+          </div>
+          <div class="pdu-edit-field"><label>New Password</label><input id="mgmt-pw-new" type="password" placeholder="New password"></div>
+          <div class="pdu-edit-field"><label>Confirm Password</label><input id="mgmt-pw-confirm" type="password" placeholder="Confirm password"></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" onclick="submitPasswordChange()">Change Password</button>
+            <button class="btn-sm" onclick="hideChangePasswordModal()">Cancel</button>
+          </div>
+        </div>
+        <div class="field-hint" style="margin-top:10px">Factory reset: press pinhole button on PDU for 10-15 seconds. Resets to cyber/cyber credentials (~3.5 min reboot). Outlets stay in current state.</div>
+      </div>
+      <div class="gen-section sec-network">
+        <div class="gen-section-title">Network Configuration</div>
+        <div id="mgmt-network">
+          <div class="gen-stat"><span class="gen-stat-label">IP Address</span><span class="gen-stat-val" id="mgmt-net-ip">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Subnet</span><span class="gen-stat-val" id="mgmt-net-subnet">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Gateway</span><span class="gen-stat-val" id="mgmt-net-gw">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">DHCP</span><span class="gen-stat-val" id="mgmt-net-dhcp">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">MAC</span><span class="gen-stat-val" id="mgmt-net-mac">--</span></div>
+        </div>
+        <div id="mgmt-network-edit" style="display:none;margin-top:10px;padding:12px;background:rgba(255,42,109,0.03);border:1px solid rgba(255,42,109,0.2);border-radius:var(--radius)">
+          <div style="color:var(--red);font-size:11px;font-weight:600;margin-bottom:8px">WARNING: Changing network settings may cause loss of connectivity. You may need to reconfigure the bridge with the new IP address.</div>
+          <div class="pdu-edit-field"><label>IP Address</label><input id="mgmt-net-edit-ip" placeholder="192.168.1.100"></div>
+          <div class="pdu-edit-field"><label>Subnet</label><input id="mgmt-net-edit-subnet" placeholder="255.255.255.0"></div>
+          <div class="pdu-edit-field"><label>Gateway</label><input id="mgmt-net-edit-gw" placeholder="192.168.1.1"></div>
+          <div class="pdu-edit-field"><label>DHCP</label><select id="mgmt-net-edit-dhcp"><option value="false">Disabled</option><option value="true">Enabled</option></select></div>
+          <div class="pdu-edit-field"><label>Type CONFIRM to enable save</label><input id="mgmt-net-confirm" placeholder="CONFIRM" oninput="document.getElementById('mgmt-net-save-btn').disabled=this.value!=='CONFIRM'"></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" id="mgmt-net-save-btn" disabled onclick="saveNetworkConfig()">Save Network Config</button>
+            <button class="btn-sm" onclick="cancelNetworkEdit()">Cancel</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn-sm" onclick="loadNetworkConfig()">Refresh</button>
+          <button class="btn-sm" onclick="startNetworkEdit()">Edit</button>
+        </div>
+      </div>
+      <div class="gen-section sec-thresholds">
+        <div class="gen-section-title">Load Thresholds</div>
+        <div id="mgmt-thresholds">
+          <div class="gen-stat"><span class="gen-stat-label">Device Overload</span><span class="gen-stat-val" id="mgmt-thresh-over">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Near Overload</span><span class="gen-stat-val" id="mgmt-thresh-near">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Low Load</span><span class="gen-stat-val" id="mgmt-thresh-low">--</span></div>
+        </div>
+        <div id="mgmt-bank-thresholds" style="margin-top:8px"></div>
+        <div id="mgmt-threshold-edit" style="display:none;margin-top:10px;padding:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius)">
+          <div class="pdu-edit-field"><label>Overload (%)</label><input id="mgmt-thresh-edit-over" type="number" min="1" max="100"></div>
+          <div class="pdu-edit-field"><label>Near Overload (%)</label><input id="mgmt-thresh-edit-near" type="number" min="1" max="100"></div>
+          <div class="pdu-edit-field"><label>Low Load (%)</label><input id="mgmt-thresh-edit-low" type="number" min="0" max="100"></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" onclick="saveThresholds()">Save Thresholds</button>
+            <button class="btn-sm" onclick="cancelThresholdEdit()">Cancel</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn-sm" onclick="loadThresholds()">Refresh</button>
+          <button class="btn-sm" onclick="startThresholdEdit()">Edit</button>
+        </div>
+      </div>
+      <div class="gen-section sec-outlets">
+        <div class="gen-section-title">Outlet Configuration</div>
+        <div id="mgmt-outlet-config" style="font-size:11px;overflow-x:auto;color:var(--text-2)">Loading...</div>
+        <button class="btn-sm" onclick="loadOutletConfig()" style="margin-top:10px">Refresh</button>
+      </div>
+      <div class="gen-section" style="border-color:var(--cyan)">
+        <div class="gen-section-title" style="color:var(--cyan)">ATS Configuration</div>
+        <div id="mgmt-ats-config">
+          <div class="gen-stat"><span class="gen-stat-label">Preferred Source</span><span class="gen-stat-val" id="mgmt-ats-preferred">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Voltage Sensitivity</span><span class="gen-stat-val" id="mgmt-ats-sensitivity">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Upper Voltage Limit</span><span class="gen-stat-val" id="mgmt-ats-upper">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Lower Voltage Limit</span><span class="gen-stat-val" id="mgmt-ats-lower">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Coldstart Delay</span><span class="gen-stat-val" id="mgmt-ats-colddelay">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Coldstart State</span><span class="gen-stat-val" id="mgmt-ats-coldstate">--</span></div>
+        </div>
+        <div id="mgmt-ats-edit" style="display:none;margin-top:10px;padding:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius)">
+          <div class="pdu-edit-field"><label>Preferred Source</label><select id="mgmt-ats-edit-preferred"><option value="A">A</option><option value="B">B</option></select></div>
+          <div class="pdu-edit-field"><label>Voltage Sensitivity</label><select id="mgmt-ats-edit-sensitivity"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></div>
+          <div class="pdu-edit-field"><label>Upper Voltage Limit (V)</label><input id="mgmt-ats-edit-upper" type="number" min="100" max="160"></div>
+          <div class="pdu-edit-field"><label>Lower Voltage Limit (V)</label><input id="mgmt-ats-edit-lower" type="number" min="60" max="120"></div>
+          <div class="pdu-edit-field"><label>Coldstart Delay (sec)</label><input id="mgmt-ats-edit-colddelay" type="number" min="0" max="300"></div>
+          <div class="pdu-edit-field"><label>Coldstart State</label><select id="mgmt-ats-edit-coldstate"><option value="allon">All On</option><option value="prevstate">Restore Previous</option></select></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" onclick="saveATSConfig()">Save ATS Config</button>
+            <button class="btn-sm" onclick="cancelATSEdit()">Cancel</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn-sm" onclick="loadATSConfig()">Refresh</button>
+          <button class="btn-sm" onclick="startATSEdit()">Edit</button>
+        </div>
+      </div>
+      <div class="gen-section" style="border-color:var(--amber)">
+        <div class="gen-section-title" style="color:var(--amber)">Notifications</div>
+        <div id="mgmt-notifications">
+          <div style="font-size:12px;color:var(--text-3)">
+            <div style="font-weight:600;margin-bottom:4px">SNMP Traps</div>
+            <div id="mgmt-notif-traps">--</div>
+            <div style="font-weight:600;margin-top:10px;margin-bottom:4px">SMTP Server</div>
+            <div id="mgmt-notif-smtp">--</div>
+            <div style="font-weight:600;margin-top:10px;margin-bottom:4px">Email Recipients</div>
+            <div id="mgmt-notif-email">--</div>
+            <div style="font-weight:600;margin-top:10px;margin-bottom:4px">Syslog Servers</div>
+            <div id="mgmt-notif-syslog">--</div>
+          </div>
+        </div>
+        <button class="btn-sm" onclick="loadNotifications()" style="margin-top:10px">Refresh</button>
+      </div>
+      <div class="gen-section" style="border-color:var(--green)">
+        <div class="gen-section-title" style="color:var(--green)">EnergyWise</div>
+        <div id="mgmt-energywise">
+          <div class="gen-stat"><span class="gen-stat-label">Domain</span><span class="gen-stat-val" id="mgmt-ew-domain">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Port</span><span class="gen-stat-val" id="mgmt-ew-port">--</span></div>
+          <div class="gen-stat"><span class="gen-stat-label">Enabled</span><span class="gen-stat-val" id="mgmt-ew-enabled">--</span></div>
+        </div>
+        <div id="mgmt-ew-edit" style="display:none;margin-top:10px;padding:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius)">
+          <div class="pdu-edit-field"><label>Domain</label><input id="mgmt-ew-edit-domain" placeholder="EnergyWise domain"></div>
+          <div class="pdu-edit-field"><label>Port</label><input id="mgmt-ew-edit-port" type="number" value="43440"></div>
+          <div class="pdu-edit-field"><label>Secret</label><input id="mgmt-ew-edit-secret" type="password" placeholder="EnergyWise secret"></div>
+          <div class="pdu-edit-field"><label>Enabled</label><select id="mgmt-ew-edit-enabled"><option value="true">Yes</option><option value="false">No</option></select></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-primary" onclick="saveEnergyWise()">Save</button>
+            <button class="btn-sm" onclick="cancelEnergyWiseEdit()">Cancel</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn-sm" onclick="loadEnergyWise()">Refresh</button>
+          <button class="btn-sm" onclick="startEnergyWiseEdit()">Edit</button>
+        </div>
+      </div>
+      <div class="gen-section sec-eventlog">
+        <div class="gen-section-title">PDU Event Log</div>
+        <div id="mgmt-eventlog" style="max-height:300px;overflow-y:auto;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text-2)">Loading...</div>
+        <button class="btn-sm" onclick="loadEventLog()" style="margin-top:10px">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Tab: Logs -->
+    <div id="tab-logs" class="tab-content">
+      <div class="settings-section">
+        <div class="settings-section-title">Bridge Logs</div>
+        <div class="log-controls">
+          <select id="log-level-filter" onchange="loadLogs()">
+            <option value="">All Levels</option>
+            <option value="ERROR">ERROR</option>
+            <option value="WARNING">WARNING+</option>
+            <option value="INFO" selected>INFO+</option>
+            <option value="DEBUG">DEBUG+</option>
+          </select>
+          <input id="log-search" type="text" placeholder="Search logs..." oninput="loadLogs()" style="flex:1;min-width:120px">
+          <label><input type="checkbox" id="log-auto-refresh" checked onchange="toggleLogAutoRefresh()"> Auto-refresh</label>
+          <button class="btn-sm" onclick="loadLogs()">Refresh</button>
+        </div>
+        <div id="log-viewer" class="log-viewer">Loading logs...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="restart-overlay" class="restart-overlay">
+  <div class="spinner"></div>
+  <div class="restart-text">Restarting bridge...</div>
+</div>
+
+<div id="firstrun-overlay" class="firstrun-overlay">
+  <div class="firstrun-modal">
+    <h2>Welcome to CyberPDU</h2>
+    <p>Let's get started by finding your PDU. Connect via Ethernet (SNMP) or RS-232 serial cable, then choose a discovery method below.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <button class="btn btn-primary" onclick="dismissFirstRunScan()">Scan Network</button>
+      <button class="btn btn-primary" onclick="dismissFirstRunSerial()">Scan Serial Ports</button>
+      <button class="btn" style="border:1px solid var(--border-hi);color:var(--text-2)" onclick="dismissFirstRunManual()">Enter Manually</button>
+    </div>
+  </div>
+</div>
+
+<!-- Login Overlay (shown when auth is enabled and user is not authenticated) -->
+<div id="login-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:10000;display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--radius-lg);padding:32px;width:340px;text-align:center;box-shadow:0 0 40px rgba(0,240,255,0.08)">
+    <div style="font-size:15px;font-weight:700;color:var(--cyan);letter-spacing:0.05em;margin-bottom:4px">CYBERPDU</div>
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:20px">Authentication Required</div>
+    <div style="margin-bottom:10px"><input id="login-username" placeholder="Username" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></div>
+    <div style="margin-bottom:10px"><input id="login-password" type="password" placeholder="Password" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px"></div>
+    <div id="login-error" style="color:var(--red);font-size:11px;margin-bottom:10px;display:none"></div>
+    <button onclick="doLogin()" style="width:100%;padding:8px;background:var(--cyan);color:var(--bg);border:none;border-radius:4px;font-weight:600;font-size:13px;cursor:pointer">Log In</button>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div class="help-overlay" id="help-overlay" onclick="closeHelp()">
+  <div class="help-modal" role="dialog" aria-label="Help" onclick="event.stopPropagation()">
+    <div class="help-header">
+      <h2>HELP</h2>
+      <button class="settings-close" onclick="closeHelp()">&times;</button>
+    </div>
+    <div class="help-body">
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Quick Start</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p>The CyberPower PDU Bridge monitors your Power Distribution Unit in real time and lets you control outlets from the browser.</p>
+          <ul>
+            <li><strong>View live data</strong> &mdash; voltage, current, power, and outlet states update every few seconds</li>
+            <li><strong>Control outlets</strong> &mdash; click any outlet tile to turn it ON, OFF, or Reboot</li>
+            <li><strong>Rename outlets</strong> &mdash; click the pencil icon on an outlet to give it a custom name</li>
+            <li><strong>Add PDUs</strong> &mdash; click the gear icon and use "Add PDU" to configure additional devices</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Understanding the Dashboard</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p><strong>ATS Panel</strong> &mdash; The Automatic Transfer Switch panel shows your dual power inputs. Source A and B each show voltage, current, and status. The center diagram shows which input is active and the flow path to the output bus.</p>
+          <p><strong>Outlet Tiles</strong> &mdash; Each outlet shows its state (ON/OFF), name, and power draw. Green = ON, Red = OFF. Click to control.</p>
+          <p><strong>History Charts</strong> &mdash; Power, voltage, and current graphs over time. Use the range buttons (1H, 6H, 24H, 7D, 30D) to zoom in/out. Export data with the CSV button.</p>
+          <p><strong>Automation Rules</strong> &mdash; Define rules to automatically turn outlets on/off based on voltage levels, ATS state, or time of day. Rules have configurable delays and can auto-restore.</p>
+          <p><strong>Energy Report</strong> &mdash; Weekly summary of total energy usage, peak power, and per-outlet breakdown.</p>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">What is SNMP?</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p><strong>Simple Network Management Protocol (SNMP)</strong> is a standard protocol for monitoring and managing network devices. Your PDU speaks SNMP, and this bridge reads from it every few seconds.</p>
+          <p><strong>Community strings</strong> are like passwords. The "read" community (default: <code>public</code>) lets the bridge poll data. The "write" community (default: <code>private</code>) allows controlling outlets and changing settings.</p>
+          <p>The bridge queries specific OIDs (Object Identifiers) &mdash; unique addresses for each piece of data like voltage, outlet state, or device name.</p>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">What is MQTT?</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p><strong>MQTT</strong> is a lightweight messaging protocol. The bridge publishes all PDU data to an MQTT broker so other systems can subscribe to it.</p>
+          <p><strong>Home Assistant integration</strong> &mdash; The bridge automatically publishes MQTT Discovery configs, so Home Assistant finds your PDU outlets as switches and sensors with zero configuration.</p>
+          <p><strong>The green dot</strong> in the header shows MQTT connection status. Green = connected to broker. Red = disconnected (the bridge will auto-reconnect).</p>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Troubleshooting</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p><strong>Red API dot (disconnected)</strong> &mdash; The browser cannot reach the bridge web server. Check that the Docker container is running: <code>docker compose ps</code>. Verify port 8080 is not blocked.</p>
+          <p><strong>Red MQTT dot</strong> &mdash; The bridge cannot connect to the Mosquitto broker. Check <code>docker compose logs mosquitto</code>. Ensure <code>MQTT_HOST</code> in <code>.env</code> matches the broker address.</p>
+          <p><strong>Outlet commands not working</strong> &mdash; SNMP write community string may be incorrect. Check <code>PDU_COMMUNITY_WRITE</code> in your <code>.env</code> or PDU config. The default is usually <code>private</code>.</p>
+          <p><strong>No data in charts</strong> &mdash; History takes a few seconds to start populating after first launch. If it persists, check that the bridge can reach the PDU: <code>docker compose logs bridge</code>.</p>
+          <p><strong>ATS panel shows all dashes</strong> &mdash; Your PDU model may not support ATS features. The bridge auto-detects capabilities. Standard PDU models will show limited source data.</p>
+          <p><strong>Settings changes not persisting</strong> &mdash; PDU configuration is stored in <code>pdus.json</code> inside the container. Make sure the <code>./data</code> volume is mounted in <code>docker-compose.yml</code>.</p>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Data &amp; Retention</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <p>The bridge stores historical data in a local <strong>SQLite database</strong> at 1-second resolution (1Hz). No cloud services or external databases are required.</p>
+          <p><strong>Retention period</strong> &mdash; Data older than the configured retention period (default: 60 days) is automatically purged. Change this with the <code>HISTORY_RETENTION_DAYS</code> environment variable.</p>
+          <p><strong>Chart downsampling</strong> &mdash; When viewing longer time ranges (7D, 30D), the API automatically downsamples data for fast rendering while preserving trends.</p>
+          <p><strong>CSV export</strong> &mdash; Use the "Export CSV" button above the charts to download the currently displayed time range for analysis in spreadsheet software.</p>
+          <p><strong>Energy reports</strong> &mdash; Weekly reports are generated automatically and show total kWh, average/peak watts, and per-outlet breakdowns.</p>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Tips</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <ul>
+            <li><strong>Click outlet tiles</strong> for quick ON/OFF/Reboot controls</li>
+            <li><strong>Use the PDU selector</strong> (dropdown at top) when multiple PDUs are configured</li>
+            <li><strong>Export CSV</strong> to download historical data for analysis</li>
+            <li><strong>Rename sources</strong> &mdash; in Settings &gt; Rename, customize "Input A" / "Input B" labels</li>
+            <li><strong>Automation rules</strong> can protect equipment during power events &mdash; e.g., shed loads when voltage drops or when the ATS transfers to backup power</li>
+            <li><strong>Keyboard shortcuts</strong> &mdash; Press <code>Escape</code> to close modals, settings panel, and outlet menus</li>
+            <li><strong>Docker rebuild</strong> is needed after code changes: <code>docker compose up -d --build</code></li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-header" onclick="toggleHelpSection(this)">
+          <span class="help-section-title">Links</span>
+          <span class="help-section-arrow">&#9654;</span>
+        </div>
+        <div class="help-section-content">
+          <ul>
+            <li><a href="https://github.com/mvalancy/CyberPower-PDU" target="_blank">GitHub &mdash; Documentation &amp; Source Code</a></li>
+            <li><a href="https://github.com/mvalancy/CyberPower-PDU/issues" target="_blank">GitHub &mdash; Report Issues</a></li>
+            <li><a href="https://valpatel.com" target="_blank">Valpatel Software LLC</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -580,7 +1594,6 @@ const BLUE = '#00f0ff';
 const AMBER = '#fcee0a';
 
 function apiUrl(path) {
-  // Append ?device_id= when we have a selected device and multiple PDUs
   if (currentDeviceId && pduList.length > 1) {
     const sep = path.includes('?') ? '&' : '?';
     return path + sep + 'device_id=' + encodeURIComponent(currentDeviceId);
@@ -598,12 +1611,47 @@ function fmtInt(v) { return v != null ? Math.round(v).toLocaleString() : '--'; }
 function fmtTime(ts) { return new Date(ts * 1000).toLocaleTimeString(); }
 function esc(s) { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; }
 
+// --- Toast Notification System ---
+function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  const icons = { success: '\u2713', error: '\u2717', info: '\u24D8' };
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span class="toast-msg">${esc(message)}</span><button class="toast-close" onclick="dismissToast(this.parentElement)">\u00d7</button>`;
+  container.appendChild(toast);
+  const timer = setTimeout(() => dismissToast(toast), duration);
+  toast._timer = timer;
+}
+function dismissToast(el) {
+  if (!el || el._dismissed) return;
+  el._dismissed = true;
+  clearTimeout(el._timer);
+  el.classList.add('exit');
+  setTimeout(() => el.remove(), 260);
+}
+
+// --- Loading button helper ---
+function setLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) { btn.classList.add('loading'); btn.disabled = true; }
+  else { btn.classList.remove('loading'); btn.disabled = false; }
+}
+async function withLoading(btn, fn) {
+  setLoading(btn, true);
+  try { return await fn(); }
+  finally { setLoading(btn, false); }
+}
+
 // --- Multi-PDU ---
 async function loadPDUList() {
   try {
     const resp = await fetch('/api/pdus');
     const data = await resp.json();
     pduList = data.pdus || [];
+    // First-run: show wizard if no PDUs configured
+    if (pduList.length === 0) {
+      document.getElementById('firstrun-overlay').classList.add('open');
+    }
     const sel = document.getElementById('pdu-selector');
     if (pduList.length > 1) {
       sel.style.display = '';
@@ -772,35 +1820,164 @@ function updateATSDiagram(ats, summary, inputs) {
 
 function setLed(id, state) { document.getElementById(id).className = 'led-bulb ' + state; }
 
+// --- Status banner ---
+function updateStatusBanner(health) {
+  const banner = document.getElementById('status-banner');
+  const title = document.getElementById('status-banner-title');
+  const issuesList = document.getElementById('status-banner-issues');
+
+  if (!health || !health.issues || health.issues.length === 0) {
+    banner.className = 'status-banner';
+    return;
+  }
+
+  const hasErrors = health.issues.some(i =>
+    i.includes('not found') || i.includes('LOST') || i.includes('disconnected') || i.includes('No data')
+  );
+  banner.className = 'status-banner visible ' + (hasErrors ? 'error' : 'warning');
+
+  if (health.status === 'degraded') {
+    title.innerHTML = (hasErrors ? '\u26A0' : '\u26A0') + ' System Issues Detected';
+  }
+
+  issuesList.innerHTML = health.issues.map(i => `<li>${esc(i)}</li>`).join('');
+}
+
+function updateConnectionStatus(connected, status) {
+  const connDot = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+
+  if (connected) {
+    connDot.className = 'conn-dot ok';
+    connDot.title = 'Connected';
+    connText.className = 'conn-status-text ok';
+    connText.textContent = '';
+  } else {
+    connDot.className = 'conn-dot err';
+    connDot.title = 'API Unreachable';
+    connText.className = 'conn-status-text err';
+    connText.textContent = 'Unreachable';
+  }
+
+  if (status && status.mqtt) {
+    const mqDot = document.getElementById('mqtt-dot');
+    const mqText = document.getElementById('mqtt-text');
+    const mqOk = status.mqtt.connected;
+    mqDot.className = 'conn-dot ' + (mqOk ? 'ok' : 'err');
+    mqDot.title = mqOk ? 'MQTT Connected' : 'MQTT Disconnected';
+    mqText.className = 'conn-status-text ' + (mqOk ? 'ok' : 'err');
+    mqText.textContent = mqOk ? '' : 'Disconnected';
+  }
+}
+
 // --- Polling ---
+let _pollFailCount = 0;
+
+// --- SSE (Server-Sent Events) ---
+let sseConnected = false;
+let sseSource = null;
+let pollTimer = null;
+
+function connectSSE() {
+  if (sseSource) { sseSource.close(); sseSource = null; }
+  let url = '/api/stream';
+  // If auth enabled, pass session token
+  const cookie = document.cookie.split(';').find(c => c.trim().startsWith('session_token='));
+  if (cookie) {
+    const token = cookie.split('=')[1];
+    url += '?token=' + encodeURIComponent(token);
+  }
+  sseSource = new EventSource(url);
+  sseSource.addEventListener('status', function(e) {
+    try {
+      const data = JSON.parse(e.data);
+      if (data && data.device) {
+        _pollFailCount = 0;
+        renderStatus(data);
+        updateConnectionStatus(true, data);
+      }
+    } catch (err) { /* ignore parse errors */ }
+  });
+  sseSource.onopen = function() {
+    sseConnected = true;
+    // Slow down polling when SSE is active
+    if (pollTimer) { clearInterval(pollTimer); }
+    pollTimer = setInterval(poll, 30000);
+  };
+  sseSource.onerror = function() {
+    sseConnected = false;
+    // Restore fast polling
+    if (pollTimer) { clearInterval(pollTimer); }
+    pollTimer = setInterval(poll, 2000);
+  };
+}
+
 async function poll() {
   try {
     const [status, rules, events] = await Promise.all([
       api('/api/status'), api('/api/rules'), api('/api/events'),
     ]);
     if (!status.error) {
+      _pollFailCount = 0;
       renderStatus(status);
-      document.getElementById('conn-dot').className = 'conn-dot ok';
-      document.getElementById('conn-dot').title = 'Connected';
-      // MQTT status
-      if (status.mqtt) {
-        const mqDot = document.getElementById('mqtt-dot');
-        mqDot.className = 'conn-dot ' + (status.mqtt.connected ? 'ok' : 'err');
-        mqDot.title = status.mqtt.connected ? 'MQTT Connected' : 'MQTT Disconnected';
-      }
+      updateConnectionStatus(true, status);
+
+      // Fetch health in background for status banner
+      try {
+        const health = await fetch(apiUrl('/api/health')).then(r => r.json());
+        updateStatusBanner(health);
+      } catch (_) { /* ignore */ }
+    } else {
+      _pollFailCount++;
+      updateConnectionStatus(true, null);
+      // API responded but no data — show banner
+      const banner = document.getElementById('status-banner');
+      const title = document.getElementById('status-banner-title');
+      const issues = document.getElementById('status-banner-issues');
+      banner.className = 'status-banner visible warning';
+      title.innerHTML = '\u26A0 Waiting for PDU Data';
+      issues.innerHTML = '<li>' + esc(status.error) + '</li>';
     }
     renderRules(rules);
     renderEvents(events);
   } catch (e) {
-    document.getElementById('conn-dot').className = 'conn-dot err';
-    document.getElementById('conn-dot').title = 'Disconnected';
+    _pollFailCount++;
+    updateConnectionStatus(false, null);
+
+    // Show detailed error in banner
+    const banner = document.getElementById('status-banner');
+    const title = document.getElementById('status-banner-title');
+    const issues = document.getElementById('status-banner-issues');
+    banner.className = 'status-banner visible error';
+
+    if (_pollFailCount <= 2) {
+      title.innerHTML = '\u26A0 Connection Lost';
+      issues.innerHTML = '<li>Cannot reach the bridge API — the container may be restarting</li>';
+    } else {
+      title.innerHTML = '\u26A0 Bridge Offline';
+      issues.innerHTML = `<li>Bridge API unreachable for ${_pollFailCount} consecutive polls</li>
+        <li>Check that the Docker container is running: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">docker compose ps</code></li>
+        <li>View logs: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">docker compose logs bridge</code></li>`;
+    }
+
+    // Clear MQTT status too
+    const mqDot = document.getElementById('mqtt-dot');
+    const mqText = document.getElementById('mqtt-text');
+    mqDot.className = 'conn-dot err';
+    mqDot.title = 'Unknown (API offline)';
+    mqText.className = 'conn-status-text err';
+    mqText.textContent = 'Unknown';
   }
 }
 
 function renderStatus(s) {
+  window._lastStatus = s;
   document.getElementById('device-name').textContent = s.device.name;
   document.getElementById('device-id').textContent = s.device.id;
   updateATSDiagram(s.ats, s.summary, s.inputs);
+
+  // Apply custom source labels from localStorage
+  applySourceLabels();
 
   // Device identity panel
   renderIdentity(s.identity || null);
@@ -821,6 +1998,7 @@ function renderStatus(s) {
   document.getElementById('out-auto').textContent = s.ats.auto_transfer ? 'ON' : 'OFF';
 
   renderOutlets(s.outlets);
+  updateOutletMax(s.outlets);
 }
 
 function renderOutlets(outlets) {
@@ -834,15 +2012,15 @@ function renderOutlets(outlets) {
     const nameHtml = isEditing
       ? `<input class="o-name-input" id="o-name-input-${n}" value="${esc(o.name)}" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter')saveOutletName(${n})" onblur="saveOutletName(${n})">`
       : `<span>${esc(o.name)}</span>`;
-    return `<div class="outlet-tile ${o.state}${isActive ? ' active' : ''}" onclick="toggleOutletMenu(event,${n})">
-      <div class="o-num">${n} <button class="o-edit-btn" onclick="event.stopPropagation();startRenameOutlet(${n})" title="Rename">&#9998;</button></div>
+    return `<div class="outlet-tile ${o.state}${isActive ? ' active' : ''}" onclick="toggleOutletMenu(event,${n})" title="Outlet ${n}: ${esc(o.name)} — Click for controls">
+      <div class="o-num">${n} <button class="o-edit-btn" onclick="event.stopPropagation();startRenameOutlet(${n})" title="Rename outlet ${n}">&#9998;</button></div>
       <div class="o-name">${nameHtml}</div>
       <div class="o-state"><span class="o-dot"></span>${o.state}</div>
       ${powerStr ? `<div class="o-power">${powerStr}</div>` : ''}
       <div class="outlet-pop">
-        <button class="pop-btn on" onclick="outletCmd(event,${n},'on')">ON</button>
-        <button class="pop-btn off" onclick="outletCmd(event,${n},'off')">OFF</button>
-        <button class="pop-btn reboot" onclick="outletCmd(event,${n},'reboot')">Reboot</button>
+        <button class="pop-btn on" onclick="outletCmd(event,${n},'on')" title="Turn outlet ${n} ON">ON</button>
+        <button class="pop-btn off" onclick="outletCmd(event,${n},'off')" title="Turn outlet ${n} OFF">OFF</button>
+        <button class="pop-btn reboot" onclick="outletCmd(event,${n},'reboot')" title="Reboot outlet ${n} (OFF then ON)">Reboot</button>
       </div>
     </div>`;
   }).join('');
@@ -850,6 +2028,17 @@ function renderOutlets(outlets) {
   if (editingOutletName != null) {
     const inp = document.getElementById('o-name-input-' + editingOutletName);
     if (inp) { inp.focus(); inp.select(); }
+  }
+
+  // Security banner for default credentials
+  const secBanner = document.getElementById('security-banner');
+  if (s.default_credentials_active === true) {
+    const devName = s.device.name || s.device.id || 'PDU';
+    document.getElementById('security-banner-text').textContent =
+      devName + ' is using factory default credentials (cyber/cyber). Change the password in Settings > Manage > Security.';
+    secBanner.style.display = 'block';
+  } else if (s.default_credentials_active === false) {
+    secBanner.style.display = 'none';
   }
 }
 
@@ -863,10 +2052,14 @@ async function saveOutletName(n) {
   if (!inp) return;
   editingOutletName = null;
   const name = inp.value.trim();
-  await api(`/api/outlets/${n}/name`, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({name}),
-  });
+  try {
+    const r = await api(`/api/outlets/${n}/name`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name}),
+    });
+    if (r.error) showToast('Rename failed: ' + r.error, 'error');
+    else showToast('Outlet ' + n + ' renamed', 'success');
+  } catch (err) { showToast('Rename failed: ' + err.message, 'error'); }
   poll();
 }
 
@@ -882,10 +2075,17 @@ function toggleOutletMenu(e, n) {
 
 async function outletCmd(e, n, action) {
   e.stopPropagation();
+  const btn = e.target.closest('.pop-btn');
   activeOutlet = null;
-  await api(`/api/outlets/${n}/command`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({action}),
+  await withLoading(btn, async () => {
+    try {
+      const r = await api(`/api/outlets/${n}/command`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action}),
+      });
+      if (r.error) showToast('Outlet ' + n + ': ' + r.error, 'error');
+      else showToast('Outlet ' + n + ' ' + action.toUpperCase() + ' sent', 'success');
+    } catch (err) { showToast('Command failed: ' + err.message, 'error'); }
   });
   setTimeout(poll, 300);
 }
@@ -1017,13 +2217,14 @@ function exportCSV() {
 function renderRules(rules) {
   const tbody = document.getElementById('rules-body');
   if (!rules || !rules.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="rules-empty">No automation rules configured</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="rules-empty">No automation rules configured</td></tr>';
     return;
   }
   tbody.innerHTML = rules.map(r => {
     let bclass = 'armed', blabel = 'Armed';
     if (r.state.triggered) { bclass = 'triggered'; blabel = 'Triggered'; }
     else if (r.state.condition_since) { bclass = 'pending'; blabel = 'Pending'; }
+    if (r.enabled === false) { bclass = 'disabled'; blabel = 'Disabled'; }
 
     let condText = '';
     if (r.condition === 'voltage_below') condText = `Input ${r.input} voltage &lt; ${r.threshold}V`;
@@ -1035,13 +2236,32 @@ function renderRules(rules) {
     else if (r.condition === 'time_between') condText = `Between ${r.threshold}`;
     else condText = `${r.condition} ${r.threshold}`;
 
+    // Days of week pills
+    const DOW_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    let dowText = '';
+    if (r.days_of_week && r.days_of_week.length > 0 && r.days_of_week.length < 7) {
+      dowText = ' <span style="font-size:10px;color:var(--text-3)">[' + r.days_of_week.map(d => DOW_NAMES[d] || d).join(',') + ']</span>';
+    }
+    // Oneshot indicator
+    const oneshotTag = r.schedule_type === 'oneshot' ? ' <span style="font-size:9px;color:var(--amber);font-weight:600">ONE-SHOT</span>' : '';
+
+    // Format outlet (int or array)
+    const outletStr = Array.isArray(r.outlet) ? r.outlet.join(',') : r.outlet;
     const restoreTag = r.restore ? ', restore' : '';
-    return `<tr>
-      <td><strong>${esc(r.name)}</strong></td>
+
+    // Execution info
+    const execCount = r.state.execution_count || 0;
+    const lastExec = r.state.last_execution ? new Date(r.state.last_execution * 1000).toLocaleString() : '--';
+
+    const enabledChecked = r.enabled !== false ? 'checked' : '';
+    return `<tr style="${r.enabled === false ? 'opacity:0.5' : ''}">
+      <td><strong>${esc(r.name)}</strong>${oneshotTag}${dowText}</td>
       <td><span class="rule-condition">${condText}</span></td>
-      <td>Outlet ${r.outlet} &rarr; <strong>${r.action.toUpperCase()}</strong>${restoreTag}</td>
+      <td>Outlet ${outletStr} &rarr; <strong>${r.action.toUpperCase()}</strong>${restoreTag}</td>
       <td>${r.delay}s</td>
       <td><span class="badge badge-${bclass}">${blabel}</span></td>
+      <td style="font-size:11px;color:var(--text-3)" title="Last: ${lastExec}">${execCount}</td>
+      <td><label style="cursor:pointer"><input type="checkbox" ${enabledChecked} onchange="toggleRule('${esc(r.name)}', this.checked)"></label></td>
       <td><div class="rule-actions">
         <button class="btn-sm" onclick="startEdit('${esc(r.name)}')">Edit</button>
         <button class="btn-sm danger" onclick="deleteRule('${esc(r.name)}')">Delete</button>
@@ -1050,23 +2270,44 @@ function renderRules(rules) {
   }).join('');
 }
 
+async function toggleRule(name, enabled) {
+  try {
+    const data = await api('/api/rules/' + encodeURIComponent(name) + '/toggle', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({enabled}),
+    });
+    if (data.error) showToast('Toggle failed: ' + data.error, 'error');
+    else showToast('Rule "' + name + '" ' + (enabled ? 'enabled' : 'disabled'), 'success');
+    poll();
+  } catch (e) { showToast('Toggle error: ' + e.message, 'error'); }
+}
+
 // --- Events ---
+const EVENT_LABELS = {
+  triggered: 'TRIGGERED', restored: 'RESTORED', created: 'CREATED', updated: 'UPDATED', deleted: 'DELETED',
+  ats_transfer: 'ATS TRANSFER', power_loss: 'POWER LOSS', power_restore: 'POWER OK',
+  redundancy_lost: 'REDUNDANCY LOST', redundancy_ok: 'REDUNDANCY OK',
+  outlet_change: 'OUTLET', load_warning: 'LOAD WARNING', load_normal: 'LOAD OK',
+  reboot: 'REBOOT', conn_degraded: 'CONN DEGRADED', conn_lost: 'CONN LOST',
+};
 function renderEvents(events) {
   const el = document.getElementById('events-list');
   if (!events || !events.length) {
-    el.innerHTML = '<div class="events-empty">No events recorded</div>';
+    el.innerHTML = '<div class="events-empty">No events recorded yet. Events appear here when power status changes, outlets switch, ATS transfers, or automation rules fire.</div>';
     return;
   }
-  el.innerHTML = events.slice(0, 50).map(e =>
-    `<div class="ev-item">
+  el.innerHTML = events.slice(0, 50).map(e => {
+    const label = EVENT_LABELS[e.type] || e.type.toUpperCase().replace(/_/g, ' ');
+    return `<div class="ev-item">
       <span class="ev-ts">${fmtTime(e.ts)}</span>
       <span class="ev-body">
-        <span class="ev-tag ${e.type}">${e.type}</span>
+        <span class="ev-tag ${e.type}">${label}</span>
         <span class="ev-rule">${esc(e.rule)}</span>
         <span class="ev-detail">${esc(e.details)}</span>
       </span>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
 }
 
 // --- Reports ---
@@ -1165,45 +2406,77 @@ function closeForm() {
   document.getElementById('rule-form-wrap').classList.remove('open');
   document.getElementById('rule-form').reset();
   document.getElementById('f-restore').checked = true;
+  document.getElementById('f-oneshot').checked = false;
+  document.querySelectorAll('input[name="dow"]').forEach(cb => cb.checked = false);
   document.getElementById('f-name').readOnly = false;
   document.getElementById('f-input').parentElement.style.display = '';
   updateThresholdHint();
+}
+
+function parseOutletInput(val) {
+  // Parse "1,3,5" or "1-4" or "1" into int or array
+  val = val.trim();
+  if (!val) return 1;
+  const parts = [];
+  for (const seg of val.split(',')) {
+    const s = seg.trim();
+    if (s.includes('-')) {
+      const [a, b] = s.split('-').map(Number);
+      for (let i = a; i <= b; i++) parts.push(i);
+    } else {
+      parts.push(parseInt(s));
+    }
+  }
+  const unique = [...new Set(parts.filter(n => !isNaN(n)))].sort((a,b) => a - b);
+  return unique.length === 1 ? unique[0] : unique;
 }
 
 function getFormData() {
   const cond = document.getElementById('f-condition').value;
   const isTime = cond.startsWith('time_');
   const thVal = document.getElementById('f-threshold').value.trim();
-  return {
+  const data = {
     name: document.getElementById('f-name').value.trim(),
     input: parseInt(document.getElementById('f-input').value),
     condition: cond,
     threshold: isTime ? thVal : parseFloat(thVal),
-    outlet: parseInt(document.getElementById('f-outlet').value),
+    outlet: parseOutletInput(document.getElementById('f-outlet').value),
     action: document.getElementById('f-action').value,
     delay: parseInt(document.getElementById('f-delay').value),
     restore: document.getElementById('f-restore').checked,
+    schedule_type: document.getElementById('f-oneshot').checked ? 'oneshot' : 'continuous',
   };
+  // Days of week
+  const dowChecks = document.querySelectorAll('input[name="dow"]:checked');
+  if (dowChecks.length > 0) {
+    data.days_of_week = Array.from(dowChecks).map(cb => parseInt(cb.value));
+  }
+  return data;
 }
 
 async function submitRule(e) {
   e.preventDefault();
   const data = getFormData();
-  try {
-    if (editingRule) {
-      const r = await api(`/api/rules/${encodeURIComponent(editingRule)}`, {
-        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
-      });
-      if (r.error) { alert(r.error); return false; }
-    } else {
-      const r = await api('/api/rules', {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
-      });
-      if (r.error) { alert(r.error); return false; }
-    }
-    closeForm();
-    poll();
-  } catch (err) { alert('Error: ' + err.message); }
+  const btn = document.getElementById('form-submit');
+  await withLoading(btn, async () => {
+    try {
+      if (editingRule) {
+        const r = await api(`/api/rules/${encodeURIComponent(editingRule)}`, {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
+        });
+        if (r.error) { showToast(r.error, 'error'); return; }
+        showToast('Rule "' + data.name + '" updated', 'success');
+      } else {
+        const r = await api('/api/rules', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data),
+        });
+        if (r.error) { showToast(r.error, 'error'); return; }
+        showToast('Rule "' + data.name + '" created', 'success');
+      }
+      closeForm();
+      poll();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  });
   return false;
 }
 
@@ -1221,6 +2494,15 @@ async function startEdit(name) {
   document.getElementById('f-action').value = r.action;
   document.getElementById('f-delay').value = r.delay;
   document.getElementById('f-restore').checked = r.restore;
+  // Outlet: format array as comma-separated
+  const outletVal = Array.isArray(r.outlet) ? r.outlet.join(',') : r.outlet;
+  document.getElementById('f-outlet').value = outletVal;
+  // Oneshot
+  document.getElementById('f-oneshot').checked = r.schedule_type === 'oneshot';
+  // Days of week
+  document.querySelectorAll('input[name="dow"]').forEach(cb => {
+    cb.checked = r.days_of_week && r.days_of_week.includes(parseInt(cb.value));
+  });
   document.getElementById('form-title').textContent = 'Edit Rule';
   document.getElementById('form-submit').textContent = 'Update Rule';
   updateThresholdHint();
@@ -1229,14 +2511,1540 @@ async function startEdit(name) {
 
 async function deleteRule(name) {
   if (!confirm('Delete rule "' + name + '"?')) return;
-  await api('/api/rules/' + encodeURIComponent(name), { method: 'DELETE' });
-  poll();
+  try {
+    await api('/api/rules/' + encodeURIComponent(name), { method: 'DELETE' });
+    showToast('Rule "' + name + '" deleted', 'success');
+    poll();
+  } catch (err) { showToast('Delete failed: ' + err.message, 'error'); }
+}
+
+// --- Settings Panel ---
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-panel').classList.add('open');
+  refreshSettingsPDUs();
+  refreshSettingsGeneral();
+  refreshSettingsRename();
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+  cancelWizard();
+}
+function switchSettingsTab(btn, tabId) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+  if (tabId === 'tab-manage') loadManagementData();
+  if (tabId === 'tab-logs') { loadLogs(); toggleLogAutoRefresh(); }
+  else { if (logAutoRefreshTimer) { clearInterval(logAutoRefreshTimer); logAutoRefreshTimer = null; } }
+}
+
+// --- Settings: PDUs tab ---
+let editingPduId = null;
+
+async function refreshSettingsPDUs() {
+  try {
+    const resp = await fetch('/api/pdus');
+    const data = await resp.json();
+    const pdus = data.pdus || [];
+    const el = document.getElementById('pdu-cards-list');
+    if (!pdus.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--text-3);font-size:12px;padding:20px">No PDUs configured</div>';
+      return;
+    }
+    el.innerHTML = pdus.map(p => {
+      const c = p.config || {};
+      const isEditing = editingPduId === p.device_id;
+      const statusClass = ['lost','error','recovering'].includes(p.status) ? 'err' : ['degraded','no_data'].includes(p.status) ? 'warn' : '';
+      return `<div class="pdu-card${isEditing ? ' editing' : ''}" data-did="${esc(p.device_id)}">
+        <div class="pdu-card-header">
+          <div class="pdu-card-info">
+            <span class="pdu-card-dot ${p.status || 'unknown'}"></span>
+            <span class="pdu-card-name">${esc(c.label || p.device_id)}</span>
+            <span class="pdu-card-host">${esc(c.host || c.serial_port || '--')}</span>
+            ${(() => {
+              const hasSnmp = !!c.host;
+              const hasSerial = !!c.serial_port;
+              if (hasSnmp && hasSerial) return '<span class="transport-badge dual">SNMP+Serial</span>';
+              if (hasSerial) return '<span class="transport-badge serial">Serial</span>';
+              return '<span class="transport-badge snmp">SNMP</span>';
+            })()}
+          </div>
+          <div class="pdu-card-actions">
+            <button class="pdu-card-btn" onclick="toggleEditPdu('${esc(p.device_id)}')">${isEditing ? 'Close' : 'Edit'}</button>
+            <button class="pdu-card-btn danger" onclick="deletePdu('${esc(p.device_id)}')">Delete</button>
+          </div>
+        </div>
+        ${p.status_detail ? `<div class="pdu-card-status-detail ${statusClass}">${esc(p.status_detail)}</div>` : ''}
+        <div class="pdu-card-edit">
+          <div class="edit-group grp-snmp">
+            <div class="edit-group-title">SNMP Connection</div>
+            <div class="pdu-edit-field"><label>Host / IP Address</label><div style="display:flex;gap:4px"><input id="edit-host-${esc(p.device_id)}" value="${esc(c.host || '')}" style="flex:1" title="IP address or hostname of your CyberPower PDU"><button class="find-host-btn" onclick="findPduHost('edit-host-${esc(p.device_id)}')" title="Scan your network to find PDUs automatically">Find</button></div><div class="field-hint">The IP address of your CyberPower PDU on your local network</div></div>
+            <div class="pdu-edit-field"><label>SNMP Port</label><input id="edit-port-${esc(p.device_id)}" type="number" value="${c.snmp_port || 161}" title="SNMP port — almost always 161"><div class="field-hint">Standard SNMP port (default: 161)</div></div>
+            <div class="pdu-edit-field"><label>Community Read</label><input id="edit-cr-${esc(p.device_id)}" value="${esc(c.community_read || 'public')}" title="SNMP read community string"><div class="field-hint">SNMP read password (default: public)</div></div>
+            <div class="pdu-edit-field"><label>Community Write</label><input id="edit-cw-${esc(p.device_id)}" value="${esc(c.community_write || 'private')}" title="SNMP write community string"><div class="field-hint">SNMP write password for outlet control (default: private)</div></div>
+            <button class="test-conn-btn" onclick="testPduSnmp('${esc(p.device_id)}')" title="Test SNMP connection with the settings above">Test SNMP</button>
+            <div class="test-inline-result" id="test-snmp-result-${esc(p.device_id)}"></div>
+          </div>
+          <div class="edit-group grp-serial">
+            <div class="edit-group-title">Serial Console</div>
+            <div class="pdu-edit-field"><label>Serial Port</label><div style="display:flex;gap:4px"><input id="edit-serial-port-${esc(p.device_id)}" value="${esc(c.serial_port || '')}" placeholder="/dev/ttyUSB0" style="flex:1" title="Serial port path for RS-232 connection"><button class="find-serial-btn" onclick="findSerialPort('edit-serial-port-${esc(p.device_id)}')" title="Scan for serial-connected PDUs">Find</button></div><div class="field-hint">e.g., /dev/ttyUSB3 — leave empty if not using serial</div></div>
+            <div class="pdu-edit-field"><label>Baud Rate</label><input id="edit-serial-baud-${esc(p.device_id)}" type="number" value="${c.serial_baud || 9600}" title="Serial baud rate"><div class="field-hint">Default: 9600</div></div>
+            <div class="pdu-edit-field"><label>Username</label><input id="edit-serial-user-${esc(p.device_id)}" value="${esc(c.serial_username || 'cyber')}" title="Serial console login username"><div class="field-hint">CyberPower default: cyber</div></div>
+            <div class="pdu-edit-field"><label>Password</label><input id="edit-serial-pass-${esc(p.device_id)}" type="password" value="${esc(c.serial_password || 'cyber')}" placeholder="Serial password" title="Serial console login password"><div class="field-hint">CyberPower default: cyber</div></div>
+            <button class="test-conn-btn" onclick="testPduSerial('${esc(p.device_id)}')" title="Test serial connection with the settings above">Test Serial</button>
+            <div class="test-inline-result" id="test-serial-result-${esc(p.device_id)}"></div>
+          </div>
+          <div class="edit-group grp-general">
+            <div class="edit-group-title">General</div>
+            <div class="pdu-edit-field"><label>Primary Transport</label><select id="edit-transport-${esc(p.device_id)}" title="Which transport to use as primary (failover to the other if available)">
+              <option value="snmp"${(c.transport || 'snmp') === 'snmp' ? ' selected' : ''}>SNMP</option>
+              <option value="serial"${c.transport === 'serial' ? ' selected' : ''}>Serial</option>
+            </select><div class="field-hint">Primary transport. The other becomes failover if configured</div></div>
+            <div class="pdu-edit-field"><label>Display Label</label><input id="edit-label-${esc(p.device_id)}" value="${esc(c.label || '')}" title="Friendly name shown in the PDU selector dropdown" placeholder="e.g., Server Room PDU"><div class="field-hint">Friendly name for this PDU (shown in the dropdown)</div></div>
+            <div class="pdu-edit-field"><label>Enabled</label><select id="edit-enabled-${esc(p.device_id)}" title="Disable to stop polling this PDU without removing it">
+              <option value="true"${c.enabled !== false ? ' selected' : ''}>Yes</option>
+              <option value="false"${c.enabled === false ? ' selected' : ''}>No</option>
+            </select><div class="field-hint">Disable to stop monitoring without deleting the PDU</div></div>
+          </div>
+          <div class="pdu-edit-actions">
+            <button class="btn btn-primary" onclick="savePduEdit('${esc(p.device_id)}')">Save</button>
+            <button class="btn btn-ghost" onclick="loadPduDefaults('${esc(p.device_id)}')" title="Reset all fields to CyberPower factory defaults">Load Defaults</button>
+            <button class="btn btn-ghost" onclick="toggleEditPdu(null)">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { /* ignore */ }
+}
+
+function toggleEditPdu(did) {
+  editingPduId = editingPduId === did ? null : did;
+  refreshSettingsPDUs();
+}
+
+async function findPduHost(inputId) {
+  const btn = document.querySelector('#' + inputId)?.closest('.pdu-edit-field')?.querySelector('.find-host-btn');
+  if (!btn) return;
+  await withLoading(btn, async () => {
+    try {
+      showToast('Scanning all network interfaces for PDUs...', 'info', 8000);
+      const resp = await fetch('/api/pdus/discover', { method: 'POST' });
+      const data = await resp.json();
+      const pdus = data.discovered || [];
+      const ifaces = data.interfaces || [];
+      const ifaceNames = ifaces.map(i => i.interface === 'default' ? 'default route' : i.interface).join(', ');
+      if (pdus.length === 0) {
+        showToast('No PDUs found on ' + (ifaceNames || 'network') + '.', 'error');
+        return;
+      }
+      const available = pdus.find(p => !p.already_configured) || pdus[0];
+      const via = available.interface ? ' via ' + available.interface : '';
+      document.getElementById(inputId).value = available.host;
+      showToast('Found: ' + (available.device_name || available.host) + ' at ' + available.host + via + ' (scanned ' + ifaces.length + ' interface(s): ' + ifaceNames + ')', 'success', 6000);
+    } catch (e) { showToast('Scan failed: ' + e.message, 'error'); }
+  });
+}
+
+async function findSerialPort(inputId) {
+  const btn = document.querySelector('#' + inputId)?.closest('.pdu-edit-field')?.querySelector('.find-serial-btn');
+  if (!btn) return;
+  await withLoading(btn, async () => {
+    try {
+      showToast('Scanning serial ports for CyberPower PDUs...', 'info', 8000);
+      const resp = await fetch('/api/pdus/discover', { method: 'POST' });
+      const data = await resp.json();
+      const spdus = data.serial_discovered || [];
+      if (spdus.length === 0) {
+        showToast('No CyberPower PDUs found on serial ports.', 'error');
+        return;
+      }
+      const available = spdus.find(p => !p.already_configured) || spdus[0];
+      document.getElementById(inputId).value = available.port || '';
+      showToast('Found: ' + (available.device_name || 'PDU') + ' on ' + available.port + (available.model ? ' (' + available.model + ')' : ''), 'success', 6000);
+    } catch (e) { showToast('Serial scan failed: ' + e.message, 'error'); }
+  });
+}
+
+async function testPduSnmp(did) {
+  const el = document.getElementById('test-snmp-result-' + did);
+  const btn = el?.previousElementSibling;
+  el.className = 'test-inline-result visible loading';
+  el.textContent = 'Testing SNMP connection...';
+  const host = document.getElementById('edit-host-' + did)?.value?.trim();
+  const port = parseInt(document.getElementById('edit-port-' + did)?.value) || 161;
+  const community = document.getElementById('edit-cr-' + did)?.value?.trim() || 'public';
+  if (!host) {
+    el.className = 'test-inline-result visible fail';
+    el.textContent = 'Enter a host/IP address first';
+    return;
+  }
+  await withLoading(btn, async () => {
+    try {
+      const resp = await fetch('/api/pdus/test-connection', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ host, community_read: community, snmp_port: port }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        el.className = 'test-inline-result visible success';
+        el.textContent = 'Connected: ' + data.device_name + ' (' + data.model + ', ' + data.outlet_count + ' outlets)';
+      } else {
+        el.className = 'test-inline-result visible fail';
+        el.textContent = 'Failed: ' + (data.error || 'No response from ' + host);
+      }
+    } catch (e) {
+      el.className = 'test-inline-result visible fail';
+      el.textContent = 'Error: ' + e.message;
+    }
+  });
+}
+
+async function testPduSerial(did) {
+  const el = document.getElementById('test-serial-result-' + did);
+  const btn = el?.previousElementSibling;
+  el.className = 'test-inline-result visible loading';
+  el.textContent = 'Testing serial connection...';
+  const port = document.getElementById('edit-serial-port-' + did)?.value?.trim();
+  const username = document.getElementById('edit-serial-user-' + did)?.value?.trim() || 'cyber';
+  const password = document.getElementById('edit-serial-pass-' + did)?.value || 'cyber';
+  if (!port) {
+    el.className = 'test-inline-result visible fail';
+    el.textContent = 'Enter a serial port first (e.g., /dev/ttyUSB0)';
+    return;
+  }
+  await withLoading(btn, async () => {
+    try {
+      const resp = await fetch('/api/pdus/test-serial', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ port, username, password }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        el.className = 'test-inline-result visible success';
+        el.textContent = 'Connected: ' + data.device_name + ' (' + data.model + ', ' + data.outlet_count + ' outlets)';
+      } else {
+        el.className = 'test-inline-result visible fail';
+        el.textContent = 'Failed: ' + (data.error || 'No response on ' + port);
+      }
+    } catch (e) {
+      el.className = 'test-inline-result visible fail';
+      el.textContent = 'Error: ' + e.message;
+    }
+  });
+}
+
+function loadPduDefaults(did) {
+  const hostEl = document.getElementById('edit-host-' + did);
+  const portEl = document.getElementById('edit-port-' + did);
+  const crEl = document.getElementById('edit-cr-' + did);
+  const cwEl = document.getElementById('edit-cw-' + did);
+  const enEl = document.getElementById('edit-enabled-' + did);
+  if (portEl) portEl.value = '161';
+  if (crEl) crEl.value = 'public';
+  if (cwEl) cwEl.value = 'private';
+  if (enEl) enEl.value = 'true';
+  const baudEl = document.getElementById('edit-serial-baud-' + did);
+  const suserEl = document.getElementById('edit-serial-user-' + did);
+  const transportEl = document.getElementById('edit-transport-' + did);
+  if (baudEl) baudEl.value = '9600';
+  if (suserEl) suserEl.value = 'cyber';
+  if (transportEl) transportEl.value = 'snmp';
+  showToast('Defaults loaded — click Save to apply', 'info');
+}
+
+async function savePduEdit(did) {
+  const btn = document.querySelector(`.pdu-card[data-did="${did}"] .btn-primary`);
+  await withLoading(btn, async () => {
+    const body = {
+      device_id: did,
+      host: document.getElementById('edit-host-' + did).value.trim(),
+      snmp_port: parseInt(document.getElementById('edit-port-' + did).value) || 161,
+      community_read: document.getElementById('edit-cr-' + did).value.trim(),
+      community_write: document.getElementById('edit-cw-' + did).value.trim(),
+      serial_port: document.getElementById('edit-serial-port-' + did).value.trim(),
+      serial_baud: parseInt(document.getElementById('edit-serial-baud-' + did).value) || 9600,
+      serial_username: document.getElementById('edit-serial-user-' + did).value.trim(),
+      serial_password: document.getElementById('edit-serial-pass-' + did).value,
+      transport: document.getElementById('edit-transport-' + did).value,
+      label: document.getElementById('edit-label-' + did).value.trim(),
+      enabled: document.getElementById('edit-enabled-' + did).value === 'true',
+    };
+    try {
+      const resp = await fetch('/api/pdus/' + encodeURIComponent(did), {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (data.error) { showToast('Save failed: ' + data.error, 'error'); return; }
+      showToast('PDU "' + did + '" updated', 'success');
+    } catch (err) { showToast('Save failed: ' + err.message, 'error'); return; }
+    editingPduId = null;
+    refreshSettingsPDUs();
+    loadPDUList();
+  });
+}
+
+async function deletePdu(did) {
+  if (!confirm('Remove PDU "' + did + '"? This will stop monitoring.')) return;
+  try {
+    await fetch('/api/pdus/' + encodeURIComponent(did), { method: 'DELETE' });
+    showToast('PDU "' + did + '" removed', 'success');
+  } catch (err) { showToast('Delete failed: ' + err.message, 'error'); }
+  refreshSettingsPDUs();
+  loadPDUList();
+}
+
+// --- Add PDU Wizard ---
+let wizardData = {};
+let wizardPrevStep = null;
+
+function startAddWizard() {
+  wizardData = {};
+  wizardPrevStep = null;
+  document.getElementById('wizard-wrap').style.display = '';
+  wizardGoStep('wiz-step-1');
+}
+function cancelWizard() {
+  document.getElementById('wizard-wrap').style.display = 'none';
+  wizardData = {};
+}
+function wizardGoStep(stepId) {
+  document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+  document.getElementById(stepId).classList.add('active');
+}
+function wizardGoBack() {
+  if (wizardData._fromScan) wizardGoStep('wiz-step-scan');
+  else if (wizardData._fromSerialScan) wizardGoStep('wiz-step-serial-scan');
+  else wizardGoStep('wiz-step-manual');
+}
+
+function wizardToggleConnType() {
+  const type = document.getElementById('wiz-conn-type').value;
+  document.getElementById('wiz-snmp-fields').style.display = type === 'snmp' ? '' : 'none';
+  document.getElementById('wiz-serial-fields').style.display = type === 'serial' ? '' : 'none';
+}
+
+async function wizardScanSerial() {
+  wizardData._fromSerialScan = true;
+  wizardData._fromScan = false;
+  wizardGoStep('wiz-step-serial-scan');
+  const spinner = '<span class="loading" style="display:inline-block;width:12px;height:12px;border:2px solid transparent;border-top-color:var(--cyan);border-radius:50%;animation:btn-spin .6s linear infinite;vertical-align:middle;margin-right:6px"></span>';
+  document.getElementById('wiz-serial-status').innerHTML = spinner + 'Scanning serial ports...';
+  document.getElementById('wiz-serial-discovered').innerHTML = '';
+  document.getElementById('wiz-serial-next').disabled = true;
+  try {
+    const resp = await fetch('/api/pdus/discover', { method: 'POST' });
+    const data = await resp.json();
+    const spdus = data.serial_discovered || [];
+    if (spdus.length === 0) {
+      document.getElementById('wiz-serial-status').textContent = 'No CyberPower PDUs found on serial ports. Try scanning the network or entering manually.';
+    } else {
+      const newCount = spdus.filter(p => !p.already_configured).length;
+      document.getElementById('wiz-serial-status').textContent = `Found ${spdus.length} PDU(s) on serial ports:`;
+    }
+    document.getElementById('wiz-serial-discovered').innerHTML = spdus.map((p, i) =>
+      `<div class="discovered-card${p.already_configured ? ' dimmed' : ''}" data-sidx="${i}"
+        onclick="${p.already_configured ? '' : `wizardSelectSerialDiscovered(${i})`}">
+        <div class="dc-name">${esc(p.device_name || 'Unknown')}</div>
+        <div class="dc-detail">${esc(p.port)}${p.port_by_id ? ' (' + esc(p.port_by_id) + ')' : ''} &mdash; ${esc(p.model || '?')} &mdash; ${esc(p.serial || '?')} &mdash; ${p.outlet_count} outlets${p.already_configured ? ' (configured)' : ''}</div>
+      </div>`
+    ).join('');
+    wizardData._serialDiscovered = spdus;
+  } catch (e) {
+    document.getElementById('wiz-serial-status').textContent = 'Scan failed: ' + e.message;
+    showToast('Serial scan failed: ' + e.message, 'error');
+  }
+}
+
+function wizardSelectSerialDiscovered(idx) {
+  document.querySelectorAll('#wiz-serial-discovered .discovered-card').forEach(c => c.classList.remove('selected'));
+  const cards = document.querySelectorAll('#wiz-serial-discovered .discovered-card:not(.dimmed)');
+  cards.forEach(c => { if (parseInt(c.dataset.sidx) === idx) c.classList.add('selected'); });
+  wizardData._selectedSerialIdx = idx;
+  document.getElementById('wiz-serial-next').disabled = false;
+}
+
+async function wizardScan() {
+  wizardData._fromScan = true;
+  wizardGoStep('wiz-step-scan');
+  const spinner = '<span class="loading" style="display:inline-block;width:12px;height:12px;border:2px solid transparent;border-top-color:var(--cyan);border-radius:50%;animation:btn-spin .6s linear infinite;vertical-align:middle;margin-right:6px"></span>';
+  document.getElementById('wiz-scan-status').innerHTML = spinner + 'Scanning all network interfaces...';
+  document.getElementById('wiz-scan-ifaces').innerHTML = '';
+  document.getElementById('wiz-discovered').innerHTML = '';
+  document.getElementById('wiz-scan-next').disabled = true;
+  try {
+    const resp = await fetch('/api/pdus/discover', { method: 'POST' });
+    const data = await resp.json();
+    const pdus = data.discovered || [];
+    const ifaces = data.interfaces || [];
+    // Show per-interface scan summary
+    if (ifaces.length > 0) {
+      document.getElementById('wiz-scan-ifaces').innerHTML = ifaces.map(ifc => {
+        const icon = ifc.error ? '\u274c' : (ifc.pdu_count > 0 ? '\u2705' : '\u2022');
+        const label = ifc.interface === 'default' ? 'default route' : esc(ifc.interface);
+        const detail = ifc.error ? esc(ifc.error) : `${ifc.pdu_count} PDU(s) found`;
+        return `<div style="margin-bottom:2px">${icon} <strong>${label}</strong> &mdash; ${esc(ifc.subnet)} &mdash; ${detail}</div>`;
+      }).join('');
+    }
+    const newCount = pdus.filter(p => !p.already_configured).length;
+    const configuredCount = pdus.filter(p => p.already_configured).length;
+    let statusMsg = '';
+    if (pdus.length === 0) {
+      statusMsg = 'No PDUs found on any interface. Try entering details manually.';
+    } else if (newCount > 0) {
+      statusMsg = `Found ${pdus.length} PDU(s) across ${ifaces.length} interface(s):`;
+      if (configuredCount > 0) statusMsg += ` (${configuredCount} already configured)`;
+    } else {
+      statusMsg = `Found ${pdus.length} PDU(s), but all are already configured.`;
+    }
+    document.getElementById('wiz-scan-status').textContent = statusMsg;
+    document.getElementById('wiz-discovered').innerHTML = pdus.map((p, i) =>
+      `<div class="discovered-card${p.already_configured ? ' dimmed' : ''}" data-idx="${i}"
+        onclick="${p.already_configured ? '' : `wizardSelectDiscovered(${i})`}">
+        <div class="dc-name">${esc(p.device_name || 'Unknown')}${p.interface ? ' <span style="opacity:0.5;font-weight:400;font-size:10px">via ' + esc(p.interface) + '</span>' : ''}</div>
+        <div class="dc-detail">${esc(p.host)} &mdash; ${esc(p.model || '?')} &mdash; ${esc(p.serial || '?')} &mdash; ${p.outlet_count} outlets${p.already_configured ? ' (already configured)' : ''}</div>
+      </div>`
+    ).join('');
+    wizardData._discovered = pdus;
+  } catch (e) {
+    document.getElementById('wiz-scan-status').textContent = 'Scan failed: ' + e.message;
+    document.getElementById('wiz-scan-ifaces').innerHTML = '';
+    showToast('Network scan failed: ' + e.message, 'error');
+  }
+}
+
+function wizardSelectDiscovered(idx) {
+  document.querySelectorAll('.discovered-card').forEach(c => c.classList.remove('selected'));
+  const cards = document.querySelectorAll('.discovered-card:not(.dimmed)');
+  cards.forEach(c => { if (parseInt(c.dataset.idx) === idx) c.classList.add('selected'); });
+  wizardData._selectedIdx = idx;
+  document.getElementById('wiz-scan-next').disabled = false;
+}
+
+function wizardManual() {
+  wizardData._fromScan = false;
+  wizardGoStep('wiz-step-manual');
+}
+
+function wizardToConfig() {
+  // Hide/show SNMP-specific fields in config step
+  const configSnmpFields = document.getElementById('wiz-config-snmp-fields');
+
+  if (wizardData._fromSerialScan && wizardData._serialDiscovered) {
+    const p = wizardData._serialDiscovered[wizardData._selectedSerialIdx];
+    wizardData.serial_port = p.port;
+    wizardData.transport = 'serial';
+    wizardData.host = '';
+    wizardData.device_name = p.device_name;
+    wizardData.model = p.model;
+    wizardData.serial = p.serial;
+    wizardData.outlet_count = p.outlet_count;
+    document.getElementById('wiz-device-id').value = (p.model || 'pdu').toLowerCase().replace(/[^a-z0-9-]/g, '') + '-serial';
+    document.getElementById('wiz-label').value = p.device_name || '';
+    if (configSnmpFields) configSnmpFields.style.display = 'none';
+  } else if (wizardData._fromScan && wizardData._discovered) {
+    const p = wizardData._discovered[wizardData._selectedIdx];
+    wizardData.host = p.host;
+    wizardData.transport = 'snmp';
+    wizardData.device_name = p.device_name;
+    wizardData.model = p.model;
+    wizardData.serial = p.serial;
+    wizardData.outlet_count = p.outlet_count;
+    document.getElementById('wiz-device-id').value = (p.model || 'pdu').toLowerCase().replace(/[^a-z0-9-]/g, '') + '-' + p.host.split('.').pop();
+    document.getElementById('wiz-label').value = p.device_name || '';
+    if (configSnmpFields) configSnmpFields.style.display = '';
+  } else {
+    const connType = document.getElementById('wiz-conn-type').value;
+    if (connType === 'serial') {
+      wizardData.serial_port = document.getElementById('wiz-serial-port').value.trim();
+      wizardData.serial_baud = parseInt(document.getElementById('wiz-serial-baud').value) || 9600;
+      wizardData.serial_username = document.getElementById('wiz-serial-user').value.trim() || 'cyber';
+      wizardData.serial_password = document.getElementById('wiz-serial-pass').value;
+      wizardData.transport = 'serial';
+      wizardData.host = '';
+      document.getElementById('wiz-device-id').value = 'pdu-serial';
+      if (configSnmpFields) configSnmpFields.style.display = 'none';
+    } else {
+      wizardData.host = document.getElementById('wiz-host').value.trim();
+      wizardData.snmp_port = parseInt(document.getElementById('wiz-port').value) || 161;
+      wizardData.community_read = document.getElementById('wiz-comm-read').value.trim() || 'public';
+      wizardData.transport = 'snmp';
+      document.getElementById('wiz-device-id').value = 'pdu-' + wizardData.host.split('.').pop();
+      if (configSnmpFields) configSnmpFields.style.display = '';
+    }
+    document.getElementById('wiz-label').value = '';
+  }
+  document.getElementById('wiz-test-result').className = 'test-result';
+  document.getElementById('wiz-test-result').style.display = 'none';
+  wizardGoStep('wiz-step-config');
+}
+
+async function wizardTest() {
+  const el = document.getElementById('wiz-test-result');
+  const btn = document.querySelector('#wiz-step-config .btn-sm');
+  el.className = 'test-result';
+  el.style.display = 'block';
+  el.style.background = 'var(--surface-3)';
+  el.style.color = 'var(--text-2)';
+  el.style.border = '1px solid var(--border)';
+  el.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid transparent;border-top-color:var(--cyan);border-radius:50%;animation:btn-spin .6s linear infinite;vertical-align:middle;margin-right:6px"></span>Testing connection...';
+  await withLoading(btn, async () => {
+    try {
+      let resp;
+      if (wizardData.transport === 'serial') {
+        resp = await fetch('/api/pdus/test-serial', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            port: wizardData.serial_port,
+            username: wizardData.serial_username || 'cyber',
+            password: wizardData.serial_password || '',
+          }),
+        });
+      } else {
+        resp = await fetch('/api/pdus/test-connection', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            host: wizardData.host,
+            community_read: wizardData.community_read || document.getElementById('wiz-comm-read')?.value || 'public',
+            snmp_port: wizardData.snmp_port || 161,
+          }),
+        });
+      }
+      const data = await resp.json();
+      if (data.success) {
+        el.className = 'test-result success';
+        el.textContent = 'Connected: ' + data.device_name + ' (' + data.model + ', ' + data.outlet_count + ' outlets)';
+        wizardData.device_name = data.device_name;
+        wizardData.model = data.model;
+        wizardData.serial = data.serial;
+        wizardData.outlet_count = data.outlet_count;
+      } else {
+        el.className = 'test-result fail';
+        el.textContent = 'Failed: ' + (data.error || 'No response');
+      }
+    } catch (e) {
+      el.className = 'test-result fail';
+      el.textContent = 'Error: ' + e.message;
+    }
+  });
+}
+
+function wizardConfirm() {
+  wizardData.device_id = document.getElementById('wiz-device-id').value.trim();
+  wizardData.label = document.getElementById('wiz-label').value.trim();
+  if (wizardData.transport !== 'serial') {
+    wizardData.community_write = document.getElementById('wiz-comm-write').value.trim() || 'private';
+  }
+  if (!wizardData.device_id) { showToast('Device ID is required', 'error'); return; }
+  if (!wizardData.host && !wizardData.serial_port) { showToast('Host or serial port is required', 'error'); return; }
+
+  const summary = document.getElementById('wiz-summary');
+  const transportLabel = wizardData.transport === 'serial' ? 'Serial' : 'SNMP';
+  const connInfo = wizardData.transport === 'serial'
+    ? esc(wizardData.serial_port || '--')
+    : esc(wizardData.host || '--');
+
+  summary.innerHTML = `
+    <dt>Device ID</dt><dd>${esc(wizardData.device_id)}</dd>
+    <dt>Transport</dt><dd>${transportLabel}</dd>
+    <dt>${wizardData.transport === 'serial' ? 'Port' : 'Host'}</dt><dd>${connInfo}</dd>
+    <dt>Label</dt><dd>${esc(wizardData.label || '--')}</dd>
+    <dt>Model</dt><dd>${esc(wizardData.model || '--')}</dd>
+    <dt>Serial</dt><dd>${esc(wizardData.serial || '--')}</dd>
+    <dt>Outlets</dt><dd>${wizardData.outlet_count || '--'}</dd>
+  `;
+  wizardGoStep('wiz-step-confirm');
+}
+
+async function wizardSave() {
+  const btn = document.querySelector('#wiz-step-confirm .btn-primary');
+  await withLoading(btn, async () => {
+    const body = {
+      device_id: wizardData.device_id,
+      host: wizardData.host || '',
+      label: wizardData.label || '',
+      enabled: true,
+    };
+    if (wizardData.transport === 'serial') {
+      body.serial_port = wizardData.serial_port || '';
+      body.serial_baud = wizardData.serial_baud || 9600;
+      body.serial_username = wizardData.serial_username || 'cyber';
+      body.serial_password = wizardData.serial_password || '';
+      body.transport = 'serial';
+    } else {
+      body.snmp_port = wizardData.snmp_port || 161;
+      body.community_read = wizardData.community_read || 'public';
+      body.community_write = wizardData.community_write || 'private';
+      body.transport = 'snmp';
+    }
+    try {
+      const resp = await fetch('/api/pdus', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+      showToast('PDU "' + wizardData.device_id + '" added successfully', 'success');
+      document.getElementById('firstrun-overlay').classList.remove('open');
+      refreshSettingsPDUs();
+      loadPDUList();
+      // Proceed to security check step
+      wizardSecurityCheck(wizardData.device_id, wizardData.transport === 'serial');
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+  });
+}
+
+// --- Wizard: Security Check Step ---
+async function wizardSecurityCheck(deviceId, hasSerial) {
+  wizardGoStep('wiz-step-security');
+  const statusEl = document.getElementById('wiz-security-status');
+  const formEl = document.getElementById('wiz-security-form');
+  const skipBtn = document.getElementById('wiz-skip-security');
+
+  if (!hasSerial) {
+    statusEl.innerHTML = '<div style="color:var(--text-3);padding:8px;background:var(--surface-3);border-radius:var(--radius)"><strong>Info:</strong> Security check requires a serial connection. Connect a serial cable to check and change the PDU password.</div>';
+    formEl.style.display = 'none';
+    skipBtn.style.display = 'none';
+    return;
+  }
+
+  statusEl.innerHTML = '<div style="color:var(--text-3)">Checking default credentials... (this may take up to 20 seconds)</div>';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const data = await api('/api/pdu/security/check?device_id=' + encodeURIComponent(deviceId), {method: 'POST', signal: controller.signal});
+    clearTimeout(timeoutId);
+    if (data.error) {
+      statusEl.innerHTML = '<div style="color:var(--text-3)">Could not check credentials: ' + esc(data.error) + '</div>';
+      formEl.style.display = 'none';
+      skipBtn.style.display = 'none';
+      return;
+    }
+    if (data.default_credentials_active) {
+      statusEl.innerHTML = '<div style="padding:10px;background:rgba(252,238,10,0.06);border:1px solid rgba(252,238,10,0.2);border-radius:var(--radius);color:var(--amber)"><strong>&#x26A0; Security Risk:</strong> This PDU is using factory default credentials (cyber/cyber). Change the password now to secure your device.</div>';
+      formEl.style.display = 'block';
+      skipBtn.style.display = 'inline-block';
+    } else {
+      statusEl.innerHTML = '<div style="padding:10px;background:rgba(5,255,161,0.06);border:1px solid rgba(5,255,161,0.15);border-radius:var(--radius);color:var(--green)">&#x2713; PDU password has been changed from defaults. Your device is secured.</div>';
+      formEl.style.display = 'none';
+      skipBtn.style.display = 'none';
+    }
+  } catch (e) {
+    statusEl.innerHTML = '<div style="color:var(--text-3)">Security check ' + (e.name === 'AbortError' ? 'timed out' : 'failed') + '. You can check later in Settings &gt; Manage &gt; Security.</div>';
+    formEl.style.display = 'none';
+    skipBtn.style.display = 'none';
+  }
+}
+
+async function wizardChangePassword() {
+  const account = document.getElementById('wiz-pw-account').value;
+  const newPw = document.getElementById('wiz-pw-new').value;
+  const confirmPw = document.getElementById('wiz-pw-confirm').value;
+  if (!newPw) { showToast('Password cannot be empty', 'error'); return; }
+  if (newPw !== confirmPw) { showToast('Passwords do not match', 'error'); return; }
+  try {
+    const data = await api('/api/pdu/security/password?device_id=' + encodeURIComponent(wizardData.device_id), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account, password: newPw}),
+    });
+    if (data.ok) {
+      showToast('Password changed successfully!', 'success');
+      document.getElementById('wiz-security-form').style.display = 'none';
+      document.getElementById('wiz-skip-security').style.display = 'none';
+      document.getElementById('wiz-security-status').innerHTML = '<div style="padding:10px;background:rgba(5,255,161,0.06);border:1px solid rgba(5,255,161,0.15);border-radius:var(--radius);color:var(--green)">&#x2713; Password changed successfully. Your device is now secured.</div>';
+    } else {
+      showToast('Password change failed: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) { showToast('Password change error: ' + e.message, 'error'); }
+}
+
+function wizardFinish() {
+  cancelWizard();
+}
+
+// --- Settings: General tab ---
+async function refreshSettingsGeneral() {
+  try {
+    const [health, config] = await Promise.all([
+      fetch(apiUrl('/api/health')).then(r => r.json()),
+      fetch('/api/config').then(r => r.json()),
+    ]);
+    document.getElementById('gen-poll-interval').value = config.poll_interval || 5;
+    document.getElementById('gen-pdu-count').textContent = config.pdu_count || 0;
+
+    // MQTT settings
+    document.getElementById('gen-mqtt-host').value = config.mqtt_broker || '';
+    document.getElementById('gen-mqtt-port').value = config.mqtt_port || 1883;
+    document.getElementById('gen-mqtt-user').value = config.mqtt_username || '';
+    document.getElementById('gen-mqtt-pass').value = '';  // Never send password back
+    document.getElementById('gen-mqtt-pass').placeholder = config.mqtt_has_password ? '(password set)' : '(optional)';
+
+    // History / Logging
+    document.getElementById('gen-retention-days').value = config.history_retention_days || 60;
+    document.getElementById('gen-log-level').value = config.log_level || 'INFO';
+
+    // Auth
+    document.getElementById('gen-auth-user').value = config.auth_username || 'admin';
+    document.getElementById('gen-auth-pass').value = '';
+    document.getElementById('gen-auth-pass').placeholder = config.auth_enabled ? '(password set — leave empty to keep)' : '(empty = auth disabled)';
+
+    // Clear restart hints
+    document.getElementById('gen-mqtt-restart-hint').textContent = '';
+    document.getElementById('gen-auth-restart-hint').textContent = '';
+
+    const uptimeSec = health.uptime_seconds || 0;
+    const uH = Math.floor(uptimeSec / 3600);
+    const uM = Math.floor((uptimeSec % 3600) / 60);
+    document.getElementById('gen-uptime').textContent = uptimeSec > 0 ? `${uH}h ${uM}m` : '--';
+
+    // Advanced settings
+    document.getElementById('gen-snmp-timeout').value = config.snmp_timeout || 2.0;
+    document.getElementById('gen-snmp-retries').value = config.snmp_retries ?? 1;
+    document.getElementById('gen-recovery-enabled').value = config.recovery_enabled ? 'true' : 'false';
+    document.getElementById('gen-session-timeout').value = config.session_timeout || 86400;
+
+    // System info
+    try {
+      const info = await fetch(apiUrl('/api/system/info')).then(r => r.json());
+      document.getElementById('gen-version').textContent = info.version || '--';
+      document.getElementById('gen-python').textContent = info.python_version || '--';
+      const uSec = info.uptime_seconds || 0;
+      const uD = Math.floor(uSec / 86400);
+      const uHr = Math.floor((uSec % 86400) / 3600);
+      const uMin = Math.floor((uSec % 3600) / 60);
+      document.getElementById('gen-uptime-full').textContent = uSec > 0 ? `${uD}d ${uHr}h ${uMin}m` : '--';
+      document.getElementById('gen-db-size').textContent = info.db_size || '--';
+      document.getElementById('gen-info-pdu-count').textContent = info.pdu_count || 0;
+      document.getElementById('gen-total-polls').textContent = info.total_polls?.toLocaleString() || '0';
+      document.getElementById('gen-info-mqtt').textContent = info.mqtt_connected ? 'Connected' : 'Disconnected';
+      document.getElementById('gen-info-sse').textContent = info.sse_clients || 0;
+      document.getElementById('gen-info-env').textContent = info.in_docker ? 'Docker' : 'Native';
+    } catch (_) {}
+
+    if (health.subsystems && health.subsystems.mqtt) {
+      const mq = health.subsystems.mqtt;
+      document.getElementById('gen-mqtt-connected').textContent = mq.connected ? 'Yes' : 'No';
+      document.getElementById('gen-mqtt-reconnects').textContent = mq.reconnect_count ?? '--';
+      document.getElementById('gen-mqtt-publishes').textContent = mq.total_publishes ?? '--';
+      document.getElementById('gen-mqtt-errors').textContent = mq.publish_errors ?? '--';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function saveGeneralSettings() {
+  const body = {};
+  const pollVal = parseFloat(document.getElementById('gen-poll-interval').value);
+  if (pollVal && pollVal >= 0.1 && pollVal <= 300) body.poll_interval = pollVal;
+
+  const retDays = parseInt(document.getElementById('gen-retention-days').value);
+  if (retDays && retDays >= 1 && retDays <= 365) body.history_retention_days = retDays;
+
+  const logLevel = document.getElementById('gen-log-level').value;
+  if (logLevel) body.log_level = logLevel;
+
+  if (!Object.keys(body).length) { showToast('No valid settings to save', 'error'); return; }
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { showToast('Save failed: ' + data.error, 'error'); return; }
+    showToast('Settings saved', 'success');
+  } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
+}
+
+async function saveMqttSettings() {
+  const body = {};
+  const host = document.getElementById('gen-mqtt-host').value.trim();
+  const port = parseInt(document.getElementById('gen-mqtt-port').value);
+  const user = document.getElementById('gen-mqtt-user').value.trim();
+  const pass = document.getElementById('gen-mqtt-pass').value;
+
+  if (host) body.mqtt_broker = host;
+  if (port && port >= 1 && port <= 65535) body.mqtt_port = port;
+  body.mqtt_username = user;
+  if (pass) body.mqtt_password = pass;  // Only send if user typed something
+
+  if (!Object.keys(body).length) { showToast('No MQTT settings to save', 'error'); return; }
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { showToast('Save failed: ' + data.error, 'error'); return; }
+    showToast('MQTT settings saved', 'success');
+    if (data.requires_restart && data.requires_restart.length) {
+      document.getElementById('gen-mqtt-restart-hint').textContent = 'Restart container to apply MQTT changes';
+      document.getElementById('restart-banner').classList.add('visible');
+      document.getElementById('restart-reason').textContent = data.requires_restart.join(', ') + ' changed';
+    }
+  } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
+}
+
+async function saveAuthSettings() {
+  const body = {};
+  const user = document.getElementById('gen-auth-user').value.trim();
+  const pass = document.getElementById('gen-auth-pass').value;
+
+  if (user) body.auth_username = user;
+  if (pass) body.auth_password = pass;
+
+  if (!Object.keys(body).length) { showToast('No auth settings to save', 'error'); return; }
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { showToast('Save failed: ' + data.error, 'error'); return; }
+    showToast('Auth settings saved', 'success');
+    if (data.requires_restart && data.requires_restart.length) {
+      document.getElementById('gen-auth-restart-hint').textContent = 'Restart container to fully apply auth changes';
+      document.getElementById('restart-banner').classList.add('visible');
+      document.getElementById('restart-reason').textContent = 'Auth settings changed';
+    }
+  } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
+}
+
+async function testMqttConnection() {
+  const btn = document.querySelector('.sec-mqtt .btn-sm:nth-child(2)');
+  const resultEl = document.getElementById('gen-mqtt-test-result');
+  resultEl.textContent = '';
+  resultEl.className = '';
+
+  const body = {};
+  const host = document.getElementById('gen-mqtt-host').value.trim();
+  const port = parseInt(document.getElementById('gen-mqtt-port').value);
+  const user = document.getElementById('gen-mqtt-user').value.trim();
+  const pass = document.getElementById('gen-mqtt-pass').value;
+  if (host) body.host = host;
+  if (port && port >= 1 && port <= 65535) body.port = port;
+  if (user) body.username = user;
+  if (pass) body.password = pass;
+
+  await withLoading(btn, async () => {
+    try {
+      const resp = await fetch('/api/config/test-mqtt', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        resultEl.textContent = 'Connected';
+        resultEl.className = 'test-badge pass';
+        showToast('MQTT connection successful', 'success');
+      } else {
+        resultEl.textContent = 'Failed';
+        resultEl.className = 'test-badge fail';
+        showToast('MQTT test failed: ' + (data.error || 'Unknown error'), 'error', 6000);
+      }
+    } catch (err) {
+      resultEl.textContent = 'Error';
+      resultEl.className = 'test-badge fail';
+      showToast('MQTT test error: ' + err.message, 'error');
+    }
+  });
+}
+
+// --- Advanced Settings ---
+async function saveAdvancedSettings() {
+  const body = {};
+  const timeout = parseFloat(document.getElementById('gen-snmp-timeout').value);
+  if (timeout >= 0.5 && timeout <= 30) body.snmp_timeout = timeout;
+  const retries = parseInt(document.getElementById('gen-snmp-retries').value);
+  if (retries >= 0 && retries <= 5) body.snmp_retries = retries;
+  body.recovery_enabled = document.getElementById('gen-recovery-enabled').value === 'true';
+  const sessionTimeout = parseInt(document.getElementById('gen-session-timeout').value);
+  if (sessionTimeout >= 60 && sessionTimeout <= 604800) body.session_timeout = sessionTimeout;
+  if (!Object.keys(body).length) { showToast('No settings to save', 'error'); return; }
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { showToast('Save failed: ' + data.error, 'error'); return; }
+    showToast('Advanced settings saved', 'success');
+  } catch (err) { showToast('Save failed: ' + err.message, 'error'); }
+}
+
+// --- Backup & Restore ---
+async function restoreBackup(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  try {
+    const text = await file.text();
+    const backup = JSON.parse(text);
+    if (!backup.files) { showToast('Invalid backup file', 'error'); return; }
+    const resp = await fetch('/api/system/restore', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: text,
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showToast('Restored: ' + data.restored.join(', '), 'success');
+      document.getElementById('restart-banner').classList.add('visible');
+      document.getElementById('restart-reason').textContent = 'Configuration restored from backup';
+    } else {
+      showToast('Restore failed: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) { showToast('Restore failed: ' + e.message, 'error'); }
+}
+
+// --- Log Viewer ---
+let logAutoRefreshTimer = null;
+
+async function loadLogs() {
+  const level = document.getElementById('log-level-filter')?.value || '';
+  const search = document.getElementById('log-search')?.value || '';
+  const viewer = document.getElementById('log-viewer');
+  try {
+    let url = '/api/system/logs?limit=200';
+    if (level) url += '&level=' + encodeURIComponent(level);
+    if (search) url += '&search=' + encodeURIComponent(search);
+    const data = await api(url);
+    if (data.error) { viewer.textContent = data.error; return; }
+    if (!data.logs || data.logs.length === 0) {
+      viewer.innerHTML = '<div style="color:var(--text-3);padding:20px;text-align:center">No log entries</div>';
+      return;
+    }
+    viewer.innerHTML = data.logs.map(l => {
+      const ts = new Date(l.ts * 1000).toLocaleTimeString();
+      return '<div class="log-entry ' + esc(l.level) + '">' + esc(ts) + ' [' + esc(l.level) + '] ' + esc(l.message) + '</div>';
+    }).join('');
+  } catch (e) { viewer.textContent = 'Failed to load logs'; }
+}
+
+function toggleLogAutoRefresh() {
+  if (logAutoRefreshTimer) { clearInterval(logAutoRefreshTimer); logAutoRefreshTimer = null; }
+  if (document.getElementById('log-auto-refresh')?.checked) {
+    logAutoRefreshTimer = setInterval(loadLogs, 3000);
+  }
+}
+
+// --- Settings: Rename tab ---
+function getSourceLabels() {
+  const key = 'pdu_source_labels_' + (currentDeviceId || 'default');
+  try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; }
+}
+function setSourceLabels(labels) {
+  const key = 'pdu_source_labels_' + (currentDeviceId || 'default');
+  localStorage.setItem(key, JSON.stringify(labels));
+}
+
+function refreshSettingsRename() {
+  // Pre-fill from last status data
+  const nameEl = document.getElementById('rename-device-name');
+  const locEl = document.getElementById('rename-device-location');
+  if (window._lastStatus) {
+    nameEl.value = window._lastStatus.device?.name || '';
+    if (window._lastStatus.identity) {
+      locEl.value = window._lastStatus.identity.sys_location || '';
+    }
+  }
+  const labels = getSourceLabels();
+  document.getElementById('rename-source-a').value = labels.source_a || '';
+  document.getElementById('rename-source-b').value = labels.source_b || '';
+}
+
+async function saveDeviceName() {
+  const name = document.getElementById('rename-device-name').value.trim();
+  if (!name) { showToast('Device name cannot be empty', 'error'); return; }
+  const btn = document.querySelector('#rename-device-name').closest('.rename-row').querySelector('button');
+  await withLoading(btn, async () => {
+    try {
+      await fetch(apiUrl('/api/device/name'), {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name }),
+      });
+      showToast('Device name updated', 'success');
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+  });
+}
+
+async function saveDeviceLocation() {
+  const location = document.getElementById('rename-device-location').value.trim();
+  if (!location) { showToast('Location cannot be empty', 'error'); return; }
+  const btn = document.querySelector('#rename-device-location').closest('.rename-row').querySelector('button');
+  await withLoading(btn, async () => {
+    try {
+      await fetch(apiUrl('/api/device/location'), {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ location }),
+      });
+      showToast('Device location updated', 'success');
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+  });
+}
+
+function saveSourceLabels() {
+  const labels = {
+    source_a: document.getElementById('rename-source-a').value.trim(),
+    source_b: document.getElementById('rename-source-b').value.trim(),
+  };
+  setSourceLabels(labels);
+  applySourceLabels();
+  showToast('Source labels saved', 'success');
+}
+
+function applySourceLabels() {
+  const labels = getSourceLabels();
+  const labelA = labels.source_a || 'Utility';
+  const labelB = labels.source_b || 'Backup';
+  const editBtn = '<button class="inline-edit-btn" onclick="openSettings();switchSettingsTab(document.querySelector(\'[data-tab=tab-rename]\'),\'tab-rename\')" title="Rename this source">&#9998;</button>';
+  const inpA = document.querySelector('#ats-input-a .inp-label');
+  const inpB = document.querySelector('#ats-input-b .inp-label');
+  if (inpA) inpA.innerHTML = '<span class="inp-tag inp-tag-a">A</span> Input A &mdash; ' + esc(labelA) + editBtn;
+  if (inpB) inpB.innerHTML = '<span class="inp-tag inp-tag-b">B</span> Input B &mdash; ' + esc(labelB) + editBtn;
+}
+
+// --- Help Modal ---
+function openHelp() {
+  document.getElementById('help-overlay').classList.add('open');
+}
+function closeHelp() {
+  document.getElementById('help-overlay').classList.remove('open');
+}
+function toggleHelpSection(header) {
+  header.parentElement.classList.toggle('open');
+}
+
+// --- Keyboard shortcuts ---
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    // Close in priority order: help modal > settings panel > active outlet popover > rule form
+    const helpOpen = document.getElementById('help-overlay').classList.contains('open');
+    const settingsOpen = document.getElementById('settings-panel').classList.contains('open');
+    const formOpen = document.getElementById('rule-form-wrap').classList.contains('open');
+    if (helpOpen) { closeHelp(); }
+    else if (settingsOpen) { closeSettings(); }
+    else if (activeOutlet !== null) {
+      activeOutlet = null;
+      document.querySelectorAll('.outlet-tile.active').forEach(t => t.classList.remove('active'));
+    }
+    else if (formOpen) { closeForm(); }
+  }
+});
+
+// --- Dynamic outlet max ---
+function updateOutletMax(outlets) {
+  if (!outlets) return;
+  const count = Object.keys(outlets).length;
+  if (count > 0) {
+    const el = document.getElementById('f-outlet');
+    if (el) el.max = count;
+  }
+}
+
+// --- Authentication ---
+let authEnabled = false;
+let authenticated = false;
+
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/auth/status');
+    const data = await r.json();
+    authEnabled = data.auth_enabled;
+    authenticated = data.authenticated;
+    const overlay = document.getElementById('login-overlay');
+    if (authEnabled && !authenticated) {
+      overlay.style.display = 'flex';
+    } else {
+      overlay.style.display = 'none';
+    }
+  } catch (e) {
+    // Auth check failed — assume no auth
+    document.getElementById('login-overlay').style.display = 'none';
+  }
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value;
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      authenticated = true;
+      document.getElementById('login-overlay').style.display = 'none';
+      poll();
+    } else {
+      errEl.textContent = data.error || 'Login failed';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+}
+
+async function doLogout() {
+  await fetch('/api/auth/logout', {method: 'POST'});
+  authenticated = false;
+  if (authEnabled) {
+    document.getElementById('login-overlay').style.display = 'flex';
+  }
+}
+
+// --- Bridge Restart ---
+async function restartBridge() {
+  if (!confirm('Restart the bridge? The UI will reconnect automatically.')) return;
+  try {
+    await fetch('/api/system/restart', {method: 'POST'});
+  } catch (_) {}
+  document.getElementById('restart-overlay').classList.add('visible');
+  document.getElementById('restart-banner').classList.remove('visible');
+  // Poll health until it comes back
+  let attempts = 0;
+  const checkInterval = setInterval(async () => {
+    attempts++;
+    try {
+      const r = await fetch('/api/health');
+      if (r.ok) {
+        clearInterval(checkInterval);
+        document.getElementById('restart-overlay').classList.remove('visible');
+        connectSSE();
+        poll();
+        showToast('Bridge restarted successfully', 'success');
+      }
+    } catch (_) {}
+    if (attempts > 60) { // 30s timeout
+      clearInterval(checkInterval);
+      document.getElementById('restart-overlay').classList.remove('visible');
+      showToast('Restart timed out — check the container', 'error');
+    }
+  }, 500);
+}
+
+// --- First-run ---
+function dismissFirstRun() {
+  document.getElementById('firstrun-overlay').classList.remove('open');
+  openSettings();
+  startAddWizard();
+}
+function dismissFirstRunScan() {
+  document.getElementById('firstrun-overlay').classList.remove('open');
+  openSettings();
+  startAddWizard();
+  wizardScan();
+}
+function dismissFirstRunSerial() {
+  document.getElementById('firstrun-overlay').classList.remove('open');
+  openSettings();
+  startAddWizard();
+  wizardScanSerial();
+}
+function dismissFirstRunManual() {
+  document.getElementById('firstrun-overlay').classList.remove('open');
+  openSettings();
+  startAddWizard();
+  wizardManual();
+}
+
+// Allow Enter key to submit login
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// Wrap fetch to handle 401 responses
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const r = await _origFetch(...args);
+  if (r.status === 401 && authEnabled) {
+    authenticated = false;
+    document.getElementById('login-overlay').style.display = 'flex';
+  }
+  return r;
+};
+
+// --- Management Functions ---
+async function loadNetworkConfig() {
+  try {
+    const data = await api('/api/pdu/network');
+    if (data.error) {
+      document.getElementById('mgmt-net-ip').textContent = data.available === false ? 'Requires serial connection' : data.error;
+      return;
+    }
+    document.getElementById('mgmt-net-ip').textContent = data.ip || '--';
+    document.getElementById('mgmt-net-subnet').textContent = data.subnet || '--';
+    document.getElementById('mgmt-net-gw').textContent = data.gateway || '--';
+    document.getElementById('mgmt-net-dhcp').textContent = data.dhcp_enabled ? 'Enabled' : 'Disabled';
+    document.getElementById('mgmt-net-mac').textContent = data.mac_address || '--';
+  } catch (e) { document.getElementById('mgmt-net-ip').textContent = 'Error loading'; }
+}
+
+async function loadThresholds() {
+  try {
+    const data = await api('/api/pdu/thresholds');
+    if (data.error) {
+      document.getElementById('mgmt-thresh-over').textContent = data.available === false ? 'Requires serial connection' : data.error;
+      return;
+    }
+    const dev = data.device || {};
+    document.getElementById('mgmt-thresh-over').textContent = dev.overload_threshold != null ? dev.overload_threshold + '%' : '--';
+    document.getElementById('mgmt-thresh-near').textContent = dev.near_overload_threshold != null ? dev.near_overload_threshold + '%' : '--';
+    document.getElementById('mgmt-thresh-low').textContent = dev.low_load_threshold != null ? dev.low_load_threshold + '%' : '--';
+    // Bank thresholds
+    const bankDiv = document.getElementById('mgmt-bank-thresholds');
+    const banks = data.banks || {};
+    let bankHtml = '';
+    for (const [bn, bt] of Object.entries(banks)) {
+      bankHtml += `<div style="margin-top:4px;font-size:11px;color:var(--text-3)">Bank ${bn}: overload=${bt.overload}% near=${bt.near_overload}% low=${bt.low_load}%</div>`;
+    }
+    bankDiv.innerHTML = bankHtml;
+  } catch (e) { document.getElementById('mgmt-thresh-over').textContent = 'Error loading'; }
+}
+
+async function loadOutletConfig() {
+  try {
+    const data = await api('/api/pdu/outlets/config');
+    if (data.error) {
+      document.getElementById('mgmt-outlet-config').textContent = data.available === false ? 'Requires serial connection' : data.error;
+      return;
+    }
+    window._outletConfigData = data;
+    let html = '<table style="width:100%;border-collapse:collapse"><tr style="color:var(--text-3)">'
+      + '<th style="text-align:left;padding:2px 6px">#</th>'
+      + '<th style="text-align:left;padding:2px 6px">Name</th>'
+      + '<th style="text-align:right;padding:2px 6px">On Delay</th>'
+      + '<th style="text-align:right;padding:2px 6px">Off Delay</th>'
+      + '<th style="text-align:right;padding:2px 6px">Reboot</th>'
+      + '<th style="text-align:center;padding:2px 6px"></th></tr>';
+    for (const [n, cfg] of Object.entries(data).sort((a,b) => parseInt(a[0]) - parseInt(b[0]))) {
+      html += `<tr style="border-top:1px solid var(--border)" id="mgmt-outlet-row-${n}"><td style="padding:2px 6px">${n}</td>`
+        + `<td style="padding:2px 6px" class="mgmt-outlet-name">${esc(cfg.name || '')}</td>`
+        + `<td style="text-align:right;padding:2px 6px" class="mgmt-outlet-ondelay">${cfg.on_delay}s</td>`
+        + `<td style="text-align:right;padding:2px 6px" class="mgmt-outlet-offdelay">${cfg.off_delay}s</td>`
+        + `<td style="text-align:right;padding:2px 6px" class="mgmt-outlet-reboot">${cfg.reboot_duration}s</td>`
+        + `<td style="text-align:center;padding:2px 6px"><button class="btn-sm" style="font-size:10px;padding:1px 6px" onclick="editOutletConfig(${n})">Edit</button></td></tr>`;
+    }
+    html += '</table>';
+    document.getElementById('mgmt-outlet-config').innerHTML = html;
+  } catch (e) { document.getElementById('mgmt-outlet-config').textContent = 'Error loading'; }
+}
+
+function editOutletConfig(n) {
+  const cfg = window._outletConfigData && window._outletConfigData[String(n)];
+  if (!cfg) return;
+  const row = document.getElementById('mgmt-outlet-row-' + n);
+  if (!row) return;
+  row.innerHTML = `<td style="padding:2px 6px">${n}</td>`
+    + `<td style="padding:2px 6px"><input id="mgmt-olt-edit-name-${n}" value="${esc(cfg.name||'')}" style="width:100px;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px"></td>`
+    + `<td style="text-align:right;padding:2px 6px"><input id="mgmt-olt-edit-on-${n}" type="number" value="${cfg.on_delay||0}" style="width:50px;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px;text-align:right"></td>`
+    + `<td style="text-align:right;padding:2px 6px"><input id="mgmt-olt-edit-off-${n}" type="number" value="${cfg.off_delay||0}" style="width:50px;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px;text-align:right"></td>`
+    + `<td style="text-align:right;padding:2px 6px"><input id="mgmt-olt-edit-reboot-${n}" type="number" value="${cfg.reboot_duration||0}" style="width:50px;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px;font-size:11px;text-align:right"></td>`
+    + `<td style="text-align:center;padding:2px 6px"><button class="btn-sm" style="font-size:10px;padding:1px 6px;color:var(--green)" onclick="saveOutletConfig(${n})">Save</button></td>`;
+}
+
+async function saveOutletConfig(n) {
+  try {
+    const body = {
+      name: document.getElementById('mgmt-olt-edit-name-' + n).value,
+      on_delay: parseInt(document.getElementById('mgmt-olt-edit-on-' + n).value) || 0,
+      off_delay: parseInt(document.getElementById('mgmt-olt-edit-off-' + n).value) || 0,
+      reboot_duration: parseInt(document.getElementById('mgmt-olt-edit-reboot-' + n).value) || 0,
+    };
+    const data = await api('/api/pdu/outlets/' + n + '/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if (data.ok) { showToast('Outlet ' + n + ' config saved', 'success'); loadOutletConfig(); }
+    else showToast('Save failed: ' + (data.error || 'Unknown'), 'error');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function loadEventLog() {
+  try {
+    const data = await api('/api/pdu/eventlog');
+    if (data.error) {
+      document.getElementById('mgmt-eventlog').textContent = data.available === false ? 'Requires serial connection' : data.error;
+      return;
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      document.getElementById('mgmt-eventlog').textContent = 'No events';
+      return;
+    }
+    let html = '';
+    for (const evt of data) {
+      const typeColor = evt.event_type === 'power_loss' ? 'var(--red)' :
+                        evt.event_type === 'power_restore' ? 'var(--green)' :
+                        evt.event_type === 'overload' ? 'var(--amber)' : 'var(--text-3)';
+      html += `<div style="padding:3px 0;border-bottom:1px solid var(--border)">`;
+      html += `<span style="color:var(--text-3)">${esc(evt.timestamp)}</span> `;
+      html += `<span style="color:${typeColor}">${esc(evt.description)}</span></div>`;
+    }
+    document.getElementById('mgmt-eventlog').innerHTML = html;
+  } catch (e) { document.getElementById('mgmt-eventlog').textContent = 'Error loading'; }
+}
+
+async function checkDefaultCreds() {
+  const el = document.getElementById('mgmt-security-status');
+  el.textContent = 'Checking credentials...';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const data = await api('/api/pdu/security/check', {method: 'POST', signal: controller.signal});
+    clearTimeout(timeoutId);
+    if (data.error) {
+      el.textContent = data.available === false ? 'Requires serial connection' : data.error;
+      return;
+    }
+    if (data.default_credentials_active) {
+      el.innerHTML = '<span style="color:var(--amber)">WARNING: Default credentials (cyber/cyber) are active. Change password immediately.</span>';
+    } else {
+      el.innerHTML = '<span style="color:var(--green)">Password has been changed from defaults.</span>';
+    }
+  } catch (e) {
+    el.textContent = e.name === 'AbortError' ? 'Check timed out — try again' : 'Check failed';
+  }
+}
+
+function showChangePasswordModal() {
+  document.getElementById('mgmt-password-form').style.display = 'block';
+}
+function hideChangePasswordModal() {
+  document.getElementById('mgmt-password-form').style.display = 'none';
+}
+
+async function submitPasswordChange() {
+  const account = document.getElementById('mgmt-pw-account').value;
+  const newPw = document.getElementById('mgmt-pw-new').value;
+  const confirm = document.getElementById('mgmt-pw-confirm').value;
+  if (!newPw) { showToast('Password cannot be empty', 'error'); return; }
+  if (newPw !== confirm) { showToast('Passwords do not match', 'error'); return; }
+  try {
+    const data = await api('/api/pdu/security/password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({account, password: newPw}),
+    });
+    if (data.ok) {
+      showToast('Password changed successfully', 'success');
+      hideChangePasswordModal();
+      document.getElementById('mgmt-pw-new').value = '';
+      document.getElementById('mgmt-pw-confirm').value = '';
+    } else {
+      showToast('Password change failed: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) { showToast('Password change error', 'error'); }
+}
+
+// Load management data when management tab is opened
+function updateManageHeader() {
+  const pdu = pduList.find(p => p.device_id === currentDeviceId) || pduList[0];
+  if (!pdu) return;
+  const c = pdu.config || {};
+  const hasSerial = !!c.serial_port;
+
+  document.getElementById('mgmt-device-label').textContent = c.label || pdu.device_id;
+  const badge = document.getElementById('mgmt-transport-badge');
+  badge.textContent = hasSerial ? (c.host ? 'SNMP+Serial' : 'Serial') : 'SNMP Only';
+  badge.className = 'transport-badge ' + (hasSerial ? (c.host ? 'dual' : 'serial') : 'snmp');
+
+  const banner = document.getElementById('mgmt-no-serial-banner');
+  if (!hasSerial) {
+    banner.style.display = 'block';
+    document.querySelectorAll('#tab-manage .btn-sm').forEach(b => b.disabled = true);
+  } else {
+    banner.style.display = 'none';
+    document.querySelectorAll('#tab-manage .btn-sm').forEach(b => b.disabled = false);
+  }
+}
+
+function loadManagementData() {
+  updateManageHeader();
+  checkDefaultCreds();
+  loadNetworkConfig();
+  loadThresholds();
+  loadOutletConfig();
+  loadATSConfig();
+  loadNotifications();
+  loadEnergyWise();
+  loadEventLog();
+}
+
+// --- Network edit ---
+function startNetworkEdit() {
+  const editDiv = document.getElementById('mgmt-network-edit');
+  document.getElementById('mgmt-net-edit-ip').value = document.getElementById('mgmt-net-ip').textContent !== '--' ? document.getElementById('mgmt-net-ip').textContent : '';
+  document.getElementById('mgmt-net-edit-subnet').value = document.getElementById('mgmt-net-subnet').textContent !== '--' ? document.getElementById('mgmt-net-subnet').textContent : '';
+  document.getElementById('mgmt-net-edit-gw').value = document.getElementById('mgmt-net-gw').textContent !== '--' ? document.getElementById('mgmt-net-gw').textContent : '';
+  document.getElementById('mgmt-net-edit-dhcp').value = document.getElementById('mgmt-net-dhcp').textContent === 'Enabled' ? 'true' : 'false';
+  document.getElementById('mgmt-net-confirm').value = '';
+  document.getElementById('mgmt-net-save-btn').disabled = true;
+  editDiv.style.display = 'block';
+}
+function cancelNetworkEdit() { document.getElementById('mgmt-network-edit').style.display = 'none'; }
+async function saveNetworkConfig() {
+  try {
+    const body = {
+      confirm: true,
+      ip: document.getElementById('mgmt-net-edit-ip').value || undefined,
+      subnet: document.getElementById('mgmt-net-edit-subnet').value || undefined,
+      gateway: document.getElementById('mgmt-net-edit-gw').value || undefined,
+      dhcp: document.getElementById('mgmt-net-edit-dhcp').value === 'true',
+    };
+    const data = await api('/api/pdu/network', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if (data.ok) { showToast('Network config saved', 'success'); cancelNetworkEdit(); loadNetworkConfig(); }
+    else showToast('Save failed: ' + (data.error || 'Unknown'), 'error');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// --- Threshold edit ---
+function startThresholdEdit() {
+  const t = (id) => { const v = document.getElementById(id).textContent; return v.replace('%','').trim(); };
+  document.getElementById('mgmt-thresh-edit-over').value = t('mgmt-thresh-over') || '';
+  document.getElementById('mgmt-thresh-edit-near').value = t('mgmt-thresh-near') || '';
+  document.getElementById('mgmt-thresh-edit-low').value = t('mgmt-thresh-low') || '';
+  document.getElementById('mgmt-threshold-edit').style.display = 'block';
+}
+function cancelThresholdEdit() { document.getElementById('mgmt-threshold-edit').style.display = 'none'; }
+async function saveThresholds() {
+  try {
+    const body = {};
+    const over = document.getElementById('mgmt-thresh-edit-over').value;
+    const near = document.getElementById('mgmt-thresh-edit-near').value;
+    const low = document.getElementById('mgmt-thresh-edit-low').value;
+    if (over) body.overload = parseInt(over);
+    if (near) body.nearover = parseInt(near);
+    if (low) body.lowload = parseInt(low);
+    const data = await api('/api/pdu/thresholds/device', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if (data.ok) { showToast('Thresholds saved', 'success'); cancelThresholdEdit(); loadThresholds(); }
+    else showToast('Save failed: ' + (data.error || 'Unknown'), 'error');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// --- ATS config ---
+async function loadATSConfig() {
+  try {
+    const data = await api('/api/pdu/ats/config');
+    if (data.error) { document.getElementById('mgmt-ats-preferred').textContent = data.available === false ? 'Requires serial' : data.error; return; }
+    const src = data.source_config || {};
+    document.getElementById('mgmt-ats-preferred').textContent = src.preferred_source || '--';
+    document.getElementById('mgmt-ats-sensitivity').textContent = src.voltage_sensitivity || '--';
+    document.getElementById('mgmt-ats-upper').textContent = src.upper_voltage_limit != null ? src.upper_voltage_limit + 'V' : '--';
+    document.getElementById('mgmt-ats-lower').textContent = src.lower_voltage_limit != null ? src.lower_voltage_limit + 'V' : '--';
+    document.getElementById('mgmt-ats-colddelay').textContent = data.coldstart_delay != null ? data.coldstart_delay + 's' : '--';
+    document.getElementById('mgmt-ats-coldstate').textContent = data.coldstart_state || '--';
+  } catch (e) { document.getElementById('mgmt-ats-preferred').textContent = 'Error loading'; }
+}
+function startATSEdit() {
+  const g = (id) => document.getElementById(id).textContent.replace(/[Vs]/g,'').trim();
+  document.getElementById('mgmt-ats-edit-preferred').value = g('mgmt-ats-preferred') === 'B' ? 'B' : 'A';
+  document.getElementById('mgmt-ats-edit-sensitivity').value = (g('mgmt-ats-sensitivity') || 'normal').toLowerCase();
+  document.getElementById('mgmt-ats-edit-upper').value = g('mgmt-ats-upper') || '';
+  document.getElementById('mgmt-ats-edit-lower').value = g('mgmt-ats-lower') || '';
+  document.getElementById('mgmt-ats-edit-colddelay').value = g('mgmt-ats-colddelay') || '0';
+  document.getElementById('mgmt-ats-edit-coldstate').value = g('mgmt-ats-coldstate') === 'prevstate' ? 'prevstate' : 'allon';
+  document.getElementById('mgmt-ats-edit').style.display = 'block';
+}
+function cancelATSEdit() { document.getElementById('mgmt-ats-edit').style.display = 'none'; }
+async function saveATSConfig() {
+  try {
+    const pref = document.getElementById('mgmt-ats-edit-preferred').value;
+    const sens = document.getElementById('mgmt-ats-edit-sensitivity').value;
+    const upper = document.getElementById('mgmt-ats-edit-upper').value;
+    const lower = document.getElementById('mgmt-ats-edit-lower').value;
+    const coldDelay = document.getElementById('mgmt-ats-edit-colddelay').value;
+    const coldState = document.getElementById('mgmt-ats-edit-coldstate').value;
+    const results = [];
+    results.push(api('/api/pdu/ats/preferred-source', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({source: pref})}));
+    results.push(api('/api/pdu/ats/sensitivity', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sensitivity: sens})}));
+    if (upper || lower) results.push(api('/api/pdu/ats/voltage-limits', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({upper: upper ? parseFloat(upper) : null, lower: lower ? parseFloat(lower) : null})}));
+    results.push(api('/api/pdu/ats/coldstart', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({delay: parseInt(coldDelay) || 0, state: coldState})}));
+    await Promise.all(results);
+    showToast('ATS config saved', 'success');
+    cancelATSEdit();
+    loadATSConfig();
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+// --- Notifications ---
+async function loadNotifications() {
+  try {
+    const data = await api('/api/pdu/notifications');
+    if (data.error) { document.getElementById('mgmt-notif-traps').textContent = data.available === false ? 'Requires serial' : data.error; return; }
+    // Traps
+    const traps = data.traps || [];
+    document.getElementById('mgmt-notif-traps').innerHTML = traps.length ? traps.map((t,i) =>
+      `<div style="padding:2px 0">${i+1}. IP: ${esc(t.ip||'--')} Community: ${esc(t.community||'--')} ${t.enabled ? '<span style="color:var(--green)">Enabled</span>' : '<span style="color:var(--text-3)">Disabled</span>'}</div>`
+    ).join('') : '<div style="color:var(--text-3)">No trap receivers configured</div>';
+    // SMTP
+    const smtp = data.smtp || {};
+    document.getElementById('mgmt-notif-smtp').innerHTML = smtp.server ? `Server: ${esc(smtp.server)}:${smtp.port || 25} From: ${esc(smtp.from_address || '--')}` : '<span style="color:var(--text-3)">Not configured</span>';
+    // Email
+    const email = data.email || [];
+    document.getElementById('mgmt-notif-email').innerHTML = email.length ? email.map((e,i) =>
+      `<div style="padding:2px 0">${i+1}. ${esc(e.to||'--')} ${e.enabled ? '<span style="color:var(--green)">Enabled</span>' : '<span style="color:var(--text-3)">Disabled</span>'}</div>`
+    ).join('') : '<div style="color:var(--text-3)">No email recipients</div>';
+    // Syslog
+    const syslog = data.syslog || [];
+    document.getElementById('mgmt-notif-syslog').innerHTML = syslog.length ? syslog.map((s,i) =>
+      `<div style="padding:2px 0">${i+1}. IP: ${esc(s.ip||'--')} ${s.enabled ? '<span style="color:var(--green)">Enabled</span>' : '<span style="color:var(--text-3)">Disabled</span>'}</div>`
+    ).join('') : '<div style="color:var(--text-3)">No syslog servers</div>';
+  } catch (e) { document.getElementById('mgmt-notif-traps').textContent = 'Error loading'; }
+}
+
+// --- EnergyWise ---
+async function loadEnergyWise() {
+  try {
+    const data = await api('/api/pdu/energywise');
+    if (data.error) { document.getElementById('mgmt-ew-domain').textContent = data.available === false ? 'Requires serial' : data.error; return; }
+    document.getElementById('mgmt-ew-domain').textContent = data.domain || '--';
+    document.getElementById('mgmt-ew-port').textContent = data.port || '--';
+    document.getElementById('mgmt-ew-enabled').textContent = data.enabled ? 'Yes' : 'No';
+  } catch (e) { document.getElementById('mgmt-ew-domain').textContent = 'Error loading'; }
+}
+function startEnergyWiseEdit() {
+  document.getElementById('mgmt-ew-edit-domain').value = document.getElementById('mgmt-ew-domain').textContent !== '--' ? document.getElementById('mgmt-ew-domain').textContent : '';
+  document.getElementById('mgmt-ew-edit-port').value = document.getElementById('mgmt-ew-port').textContent !== '--' ? document.getElementById('mgmt-ew-port').textContent : '43440';
+  document.getElementById('mgmt-ew-edit-enabled').value = document.getElementById('mgmt-ew-enabled').textContent === 'Yes' ? 'true' : 'false';
+  document.getElementById('mgmt-ew-edit').style.display = 'block';
+}
+function cancelEnergyWiseEdit() { document.getElementById('mgmt-ew-edit').style.display = 'none'; }
+async function saveEnergyWise() {
+  try {
+    const body = {
+      domain: document.getElementById('mgmt-ew-edit-domain').value || undefined,
+      port: parseInt(document.getElementById('mgmt-ew-edit-port').value) || undefined,
+      secret: document.getElementById('mgmt-ew-edit-secret').value || undefined,
+      enabled: document.getElementById('mgmt-ew-edit-enabled').value === 'true',
+    };
+    const data = await api('/api/pdu/energywise', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if (data.ok) { showToast('EnergyWise saved', 'success'); cancelEnergyWiseEdit(); loadEnergyWise(); }
+    else showToast('Save failed: ' + (data.error || 'Unknown'), 'error');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 // --- Init ---
+checkAuth();
 loadPDUList();
-setInterval(poll, 2000);
+connectSSE();
+pollTimer = setInterval(poll, 2000);
 poll();
+
+// Health banner check every 15s
+setInterval(async function() {
+  try {
+    const health = await fetch(apiUrl('/api/health')).then(r => r.json());
+    updateStatusBanner(health);
+    // Restart banner
+    if (health.restart_required && health.restart_required.length) {
+      document.getElementById('restart-banner').classList.add('visible');
+      document.getElementById('restart-reason').textContent = health.restart_required.join(', ') + ' changed';
+    } else {
+      document.getElementById('restart-banner').classList.remove('visible');
+    }
+  } catch (_) {}
+}, 15000);
 
 // Charts refresh every 60s
 loadCharts();

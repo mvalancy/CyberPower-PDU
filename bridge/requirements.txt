@@ -1,3 +1,4 @@
 pysnmp-lextudio>=6.1,<7
 paho-mqtt>=2.0,<3
 aiohttp>=3.9,<4
+pyserial>=3.5,<4

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 set -euo pipefail
 
@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 source lib/common.sh
 
 check_help "${1:-}" "./test" "Run tests against the PDU bridge" \
-"Usage: ./test [--unit|--real|--mock|--hardware|--snmpwalk]
+"Usage: ./test [--unit|--real|--mock|--hardware|--snmpwalk|--e2e|--e2e-mock|--e2e-hw]
 
 Modes:
   --unit      Run pytest unit tests with branded HTML report (default)
@@ -17,7 +17,10 @@ Modes:
   --mock      Start the stack in mock mode and run integration tests
   --hardware  Run live hardware validation suite (needs PDU_HOST)
   --snmpwalk  Full OID discovery walk against the PDU (saves to file)
-              Walks ePDU, ePDU2, and standard MIB-II trees"
+              Walks ePDU, ePDU2, and standard MIB-II trees
+  --e2e       Run Playwright browser E2E tests against running bridge
+  --e2e-mock  Auto-start bridge in mock mode, run all non-hardware E2E tests
+  --e2e-hw    Run Playwright hardware E2E tests (needs HW_TEST=true)"
 
 banner
 
@@ -113,6 +116,41 @@ case "$MODE" in
 
         echo ""
         success "Saved to $OUTFILE ($(wc -l < "$OUTFILE") lines)"
+        ;;
+
+    --e2e)
+        step "Running Playwright E2E tests (against running bridge)"
+        cd tests/e2e
+        if [ ! -d node_modules ]; then
+            info "Installing Playwright..."
+            npm install && npx playwright install chromium --with-deps
+        fi
+        NO_AUTO_SERVER=true BASE_URL="${BASE_URL:-http://localhost:8080}" \
+            npx playwright test --grep-invert @hardware
+        exit $?
+        ;;
+
+    --e2e-mock)
+        step "Running Playwright E2E tests (auto-start mock bridge)"
+        cd tests/e2e
+        if [ ! -d node_modules ]; then
+            info "Installing Playwright..."
+            npm install && npx playwright install chromium --with-deps
+        fi
+        npx playwright test --grep-invert @hardware
+        exit $?
+        ;;
+
+    --e2e-hw)
+        step "Running Playwright hardware E2E tests"
+        cd tests/e2e
+        if [ ! -d node_modules ]; then
+            info "Installing Playwright..."
+            npm install && npx playwright install chromium --with-deps
+        fi
+        HW_TEST=true NO_AUTO_SERVER=true BASE_URL="${BASE_URL:-http://localhost:8080}" \
+            npx playwright test hardware.spec.ts hardware-live.spec.ts
+        exit $?
         ;;
 
     --mock)
@@ -240,7 +278,7 @@ case "$MODE" in
 
     *)
         error "Unknown mode: $MODE"
-        info "Usage: ./test [--real|--mock|--snmpwalk]"
+        info "Usage: ./test [--unit|--real|--mock|--hardware|--snmpwalk|--e2e|--e2e-mock|--e2e-hw]"
         exit 1
         ;;
 esac

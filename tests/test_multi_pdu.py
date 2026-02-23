@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Unit tests for multi-PDU architecture:
@@ -30,6 +30,7 @@ from src.pdu_model import (
     DeviceIdentity,
     OutletData,
     PDUData,
+    SourceData,
 )
 from src.web import WebServer
 
@@ -498,3 +499,565 @@ def test_pdu_data_identity_none_by_default():
     """PDUData.identity defaults to None when not provided."""
     data = PDUData(device_name="Bare PDU", outlet_count=4)
     assert data.identity is None
+
+
+# ---------------------------------------------------------------------------
+# Runtime Add/Remove PDU Tests
+# ---------------------------------------------------------------------------
+
+class TestBridgeManagerRuntimePDU:
+    """Tests for runtime PDU add/remove in BridgeManager."""
+
+    def _make_manager_config(self):
+        """Create a mock Config for BridgeManager."""
+        config = MagicMock(spec=Config)
+        config.device_id = "test-pdu"
+        config.pdu_host = "127.0.0.1"
+        config.pdu_snmp_port = 161
+        config.pdu_community_read = "public"
+        config.pdu_community_write = "private"
+        config.mqtt_broker = "localhost"
+        config.mqtt_port = 1883
+        config.mqtt_username = ""
+        config.mqtt_password = ""
+        config.snmp_timeout = 2.0
+        config.snmp_retries = 1
+        config.poll_interval = 5.0
+        config.mock_mode = True
+        config.log_level = "WARNING"
+        config.rules_file = "/tmp/test_rules.json"
+        config.web_port = 0
+        config.history_db = ":memory:"
+        config.history_retention_days = 7
+        config.house_monthly_kwh = 0.0
+        config.outlet_names_file = "/tmp/test_outlet_names.json"
+        config.pdus_file = "/tmp/test_pdus.json"
+        config.recovery_enabled = False
+        return config
+
+    @pytest.mark.asyncio
+    async def test_handle_add_pdu_creates_poller(self):
+        """_handle_add_pdu creates a new PDUPoller and appends config."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+            mgr._pdu_configs = []
+            mgr.pollers = []
+            mgr._poller_tasks = {}
+            mgr.mqtt = MagicMock()
+            mgr.mqtt.register_device = MagicMock()
+            mgr.history = MagicMock()
+            mgr.web = MagicMock()
+            mgr.web.register_automation_engine = MagicMock()
+            mgr.web.register_pdu = MagicMock()
+
+            with patch("src.main.save_pdu_configs"):
+                with patch("asyncio.get_event_loop") as mock_loop:
+                    mock_task = MagicMock()
+                    mock_loop.return_value.create_task.return_value = mock_task
+
+                    await mgr._handle_add_pdu({
+                        "device_id": "new-pdu",
+                        "host": "10.0.0.5",
+                        "snmp_port": 161,
+                        "community_read": "public",
+                        "community_write": "private",
+                    })
+
+            assert len(mgr._pdu_configs) == 1
+            assert mgr._pdu_configs[0].device_id == "new-pdu"
+            assert len(mgr.pollers) == 1
+            assert mgr.pollers[0].device_id == "new-pdu"
+            assert "new-pdu" in mgr._poller_tasks
+            mgr.web.register_pdu.assert_called_once()
+            mgr.mqtt.register_device.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_remove_pdu_stops_poller(self):
+        """_handle_remove_pdu stops and removes the poller."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+
+            mock_poller = MagicMock()
+            mock_poller.device_id = "del-pdu"
+            mock_poller.stop = MagicMock()
+
+            mgr.pollers = [mock_poller]
+            mgr._pdu_configs = [PDUConfig(device_id="del-pdu", host="10.0.0.1")]
+            mock_task = MagicMock()
+            mock_task.done.return_value = False
+            mgr._poller_tasks = {"del-pdu": mock_task}
+            mgr.mqtt = MagicMock()
+            mgr.mqtt.unregister_device = MagicMock()
+
+            with patch("src.main.save_pdu_configs"):
+                await mgr._handle_remove_pdu("del-pdu")
+
+            mock_poller.stop.assert_called_once()
+            mock_task.cancel.assert_called_once()
+            mgr.mqtt.unregister_device.assert_called_once_with("del-pdu")
+            assert len(mgr.pollers) == 0
+            assert len(mgr._pdu_configs) == 0
+            assert "del-pdu" not in mgr._poller_tasks
+
+    @pytest.mark.asyncio
+    async def test_handle_test_connection_success(self):
+        """_handle_test_connection returns device info on success."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+
+            mock_identity = DeviceIdentity(
+                serial="SN123", model="PDU44001", outlet_count=10,
+            )
+
+            with patch("src.main.SNMPClient") as MockSNMP:
+                mock_client = MockSNMP.return_value
+                mock_client.get = AsyncMock(return_value="CyberPower PDU")
+                mock_client.get_identity = AsyncMock(return_value=mock_identity)
+                mock_client.close = MagicMock()
+
+                result = await mgr._handle_test_connection("10.0.0.1", "public", 161)
+
+            assert result["success"] is True
+            assert result["model"] == "PDU44001"
+            assert result["serial"] == "SN123"
+            mock_client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_test_connection_failure(self):
+        """_handle_test_connection returns failure when host unreachable."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+
+            with patch("src.main.SNMPClient") as MockSNMP:
+                mock_client = MockSNMP.return_value
+                mock_client.get = AsyncMock(return_value=None)
+                mock_client.close = MagicMock()
+
+                result = await mgr._handle_test_connection("10.0.0.1", "public", 161)
+
+            assert result["success"] is False
+            mock_client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_snmp_set_routes_to_poller(self):
+        """_handle_snmp_set routes to the correct poller's SNMP client."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+
+            mock_poller = MagicMock()
+            mock_poller.device_id = "pdu-1"
+            mock_poller.transport = MagicMock()
+            mock_poller.transport.set_device_field = AsyncMock(return_value=True)
+
+            mgr.pollers = [mock_poller]
+
+            await mgr._handle_snmp_set("pdu-1", "device_name", "New Name")
+            mock_poller.transport.set_device_field.assert_called_once_with("device_name", "New Name")
+
+    @pytest.mark.asyncio
+    async def test_handle_snmp_set_unknown_device(self):
+        """_handle_snmp_set raises for unknown device."""
+        from src.main import BridgeManager
+
+        with patch.object(BridgeManager, "__init__", lambda self: None):
+            mgr = BridgeManager.__new__(BridgeManager)
+            mgr.config = self._make_manager_config()
+            mgr.pollers = []
+
+            with pytest.raises(RuntimeError, match="No transport for device"):
+                await mgr._handle_snmp_set("nonexistent", "device_name", "foo")
+
+
+# ---------------------------------------------------------------------------
+# State change detection (system events)
+# ---------------------------------------------------------------------------
+
+class TestStateChangeDetection:
+    """Tests for PDUPoller._detect_state_changes emitting system events."""
+
+    def _make_poller(self):
+        """Create a PDUPoller with mocked dependencies."""
+        from src.main import PDUPoller
+        cfg = PDUConfig(
+            device_id="test-pdu", host="10.0.0.1",
+            community_read="public", community_write="private",
+        )
+        config = MagicMock()
+        config.mock_mode = False
+        config.poll_interval = 5
+        mqtt = MagicMock()
+        history = MagicMock()
+        web = MagicMock()
+        web.add_system_event = MagicMock()
+        poller = PDUPoller(
+            pdu_cfg=cfg, global_config=config,
+            mqtt=mqtt, history=history, web=web,
+        )
+        return poller
+
+    def _make_data(self, ats_current=1, source_a_status="normal",
+                   source_b_status="normal", redundancy_ok=True,
+                   outlet_states=None, bank_load="normal"):
+        outlets = {}
+        states = outlet_states or {"on": [1, 2]}
+        for st, nums in states.items():
+            for n in nums:
+                outlets[n] = OutletData(number=n, name=f"Outlet {n}",
+                                        state=st, current=1.0, power=100.0)
+        return PDUData(
+            device_name="Test", outlet_count=2, phase_count=1,
+            input_voltage=120.0, input_frequency=60.0,
+            outlets=outlets,
+            banks={1: BankData(number=1, voltage=120.0, current=1.0,
+                               power=100.0, load_state=bank_load)},
+            ats_current_source=ats_current,
+            ats_preferred_source=1,
+            source_a=SourceData(voltage=120.0, frequency=60.0,
+                                voltage_status=source_a_status),
+            source_b=SourceData(voltage=120.0, frequency=60.0,
+                                voltage_status=source_b_status),
+            redundancy_ok=redundancy_ok,
+        )
+
+    def test_ats_transfer_event(self):
+        """Detects ATS source transfer."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(ats_current=1)
+        poller._detect_state_changes(self._make_data(ats_current=2))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "ats_transfer" in types
+
+    def test_power_loss_event(self):
+        """Detects source power loss."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(source_a_status="normal")
+        poller._detect_state_changes(self._make_data(source_a_status="underVoltage"))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "power_loss" in types
+
+    def test_power_restore_event(self):
+        """Detects source power restore."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(source_b_status="underVoltage")
+        poller._detect_state_changes(self._make_data(source_b_status="normal"))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "power_restore" in types
+
+    def test_outlet_change_event(self):
+        """Detects outlet state change."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(outlet_states={"on": [1, 2]})
+        poller._detect_state_changes(self._make_data(outlet_states={"on": [1], "off": [2]}))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "outlet_change" in types
+
+    def test_redundancy_lost_event(self):
+        """Detects redundancy loss."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(redundancy_ok=True)
+        poller._detect_state_changes(self._make_data(redundancy_ok=False))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "redundancy_lost" in types
+
+    def test_load_warning_event(self):
+        """Detects bank overload warning."""
+        poller = self._make_poller()
+        poller._prev_data = self._make_data(bank_load="normal")
+        poller._detect_state_changes(self._make_data(bank_load="nearOverload"))
+        calls = poller.web.add_system_event.call_args_list
+        types = [c[0][1] for c in calls]
+        assert "load_warning" in types
+
+    def test_no_events_when_no_change(self):
+        """No events emitted when data is unchanged."""
+        poller = self._make_poller()
+        data = self._make_data()
+        poller._prev_data = data
+        poller._detect_state_changes(data)
+        poller.web.add_system_event.assert_not_called()
+
+    def test_no_events_on_first_poll(self):
+        """No events emitted on first poll (no previous data)."""
+        poller = self._make_poller()
+        poller._prev_data = None
+        poller._detect_state_changes(self._make_data())
+        poller.web.add_system_event.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Default credential auto-check tests
+# ---------------------------------------------------------------------------
+
+class TestDefaultCredentialCheck:
+    """Tests for PDUPoller auto-checking default credentials on first poll."""
+
+    def _make_poller(self, serial_transport=True):
+        from src.main import PDUPoller
+        from src.serial_transport import SerialTransport
+        cfg = PDUConfig(
+            device_id="test-pdu", host="10.0.0.1",
+            community_read="public", community_write="private",
+        )
+        if serial_transport:
+            cfg.serial_port = "/dev/ttyUSB0"
+        config = MagicMock()
+        config.mock_mode = True
+        config.poll_interval = 5
+        config.rules_file = "/tmp/test_rules.json"
+        mqtt = MagicMock()
+        history = MagicMock()
+        web = MagicMock()
+        web.add_system_event = MagicMock()
+        poller = PDUPoller(
+            pdu_cfg=cfg, global_config=config,
+            mqtt=mqtt, history=history, web=web,
+            is_single_pdu=True,
+        )
+        return poller
+
+    def test_has_serial_transport_with_serial(self):
+        """_has_serial_transport returns True when serial transport exists."""
+        from src.serial_transport import SerialTransport
+        poller = self._make_poller()
+        poller.transport = MagicMock(spec=SerialTransport)
+        assert poller._has_serial_transport() is True
+
+    def test_has_serial_transport_as_fallback(self):
+        """_has_serial_transport returns True when serial is fallback."""
+        from src.serial_transport import SerialTransport
+        poller = self._make_poller()
+        poller.transport = MagicMock()  # non-serial primary
+        poller._fallback = MagicMock(spec=SerialTransport)
+        assert poller._has_serial_transport() is True
+
+    def test_has_serial_transport_none(self):
+        """_has_serial_transport returns False when no serial transport."""
+        poller = self._make_poller(serial_transport=False)
+        poller.transport = MagicMock()  # generic mock
+        poller._fallback = None
+        assert poller._has_serial_transport() is False
+
+    @pytest.mark.asyncio
+    async def test_check_default_creds_sets_flag(self):
+        """_check_default_creds sets _default_creds_active when defaults active."""
+        from src.serial_transport import SerialTransport
+        poller = self._make_poller()
+        mock_serial_t = MagicMock(spec=SerialTransport)
+        mock_serial_t.check_default_credentials = AsyncMock(return_value=True)
+        poller.transport = mock_serial_t
+
+        await poller._check_default_creds()
+        assert poller._default_creds_active is True
+        # Should emit security warning event
+        poller.web.add_system_event.assert_called_once()
+        args = poller.web.add_system_event.call_args[0]
+        assert args[1] == "security_warning"
+
+    @pytest.mark.asyncio
+    async def test_check_default_creds_not_active(self):
+        """_check_default_creds sets flag to False when defaults changed."""
+        from src.serial_transport import SerialTransport
+        poller = self._make_poller()
+        mock_serial_t = MagicMock(spec=SerialTransport)
+        mock_serial_t.check_default_credentials = AsyncMock(return_value=False)
+        poller.transport = mock_serial_t
+
+        await poller._check_default_creds()
+        assert poller._default_creds_active is False
+        poller.web.add_system_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_default_creds_exception_handled(self):
+        """_check_default_creds handles exceptions gracefully."""
+        from src.serial_transport import SerialTransport
+        poller = self._make_poller()
+        mock_serial_t = MagicMock(spec=SerialTransport)
+        mock_serial_t.check_default_credentials = AsyncMock(side_effect=Exception("port busy"))
+        poller.transport = mock_serial_t
+
+        await poller._check_default_creds()
+        assert poller._default_creds_active is None  # unchanged
+
+    def test_get_status_detail_includes_default_creds(self):
+        """get_status_detail includes default_credentials_active when known."""
+        poller = self._make_poller()
+        poller._default_creds_active = True
+        detail = poller.get_status_detail()
+        assert detail["default_credentials_active"] is True
+
+    def test_get_status_detail_excludes_default_creds_when_unknown(self):
+        """get_status_detail omits default_credentials_active when None."""
+        poller = self._make_poller()
+        assert poller._default_creds_active is None
+        detail = poller.get_status_detail()
+        assert "default_credentials_active" not in detail
+
+    def test_first_poll_flag_starts_true(self):
+        """PDUPoller _first_poll is True initially."""
+        poller = self._make_poller()
+        assert poller._first_poll is True
+
+
+# ---------------------------------------------------------------------------
+# Management callback routing tests
+# ---------------------------------------------------------------------------
+
+class TestManagementCallbacks:
+    """Tests for BridgeManager management callbacks routing correctly."""
+
+    def _make_manager(self):
+        """Create a BridgeManager with mock dependencies for callback testing."""
+        from src.main import BridgeManager, PDUPoller
+        from src.serial_transport import SerialTransport
+
+        with patch("src.main.Config") as MockConfig, \
+             patch("src.main.MQTTHandler") as MockMQTT, \
+             patch("src.main.HistoryStore") as MockHistory, \
+             patch("src.main.WebServer") as MockWeb, \
+             patch("src.main.load_pdu_configs") as mock_load:
+
+            cfg_instance = MockConfig.return_value
+            cfg_instance.load_saved_settings = MagicMock()
+            cfg_instance.pdus_file = "/tmp/pdus.json"
+            cfg_instance.pdu_host = "10.0.0.1"
+            cfg_instance.pdu_snmp_port = 161
+            cfg_instance.pdu_community_read = "public"
+            cfg_instance.pdu_community_write = "private"
+            cfg_instance.device_id = "test-pdu"
+            cfg_instance.mock_mode = True
+            cfg_instance.poll_interval = 5
+            cfg_instance.rules_file = "/tmp/rules.json"
+            cfg_instance.web_port = 8080
+            cfg_instance.web_username = ""
+            cfg_instance.web_password = ""
+            cfg_instance.session_secret = "test"
+            cfg_instance.session_timeout = 3600
+            cfg_instance.history_db = ":memory:"
+            cfg_instance.history_retention_days = 60
+            cfg_instance.house_monthly_kwh = 0
+            cfg_instance.settings_file = "/tmp/settings.json"
+            cfg_instance.outlet_names_file = "/tmp/outlet_names.json"
+            cfg_instance.serial_port = ""
+            cfg_instance.serial_baud = 9600
+            cfg_instance.serial_username = "cyber"
+            cfg_instance.serial_password = "cyber"
+            cfg_instance.transport_primary = "snmp"
+            cfg_instance.log_level = "INFO"
+            cfg_instance.recovery_enabled = False
+
+            pdu_cfg = PDUConfig(
+                device_id="test-pdu", host="10.0.0.1",
+                community_read="public", community_write="private",
+                serial_port="/dev/ttyUSB0",
+            )
+            mock_load.return_value = [pdu_cfg]
+
+            manager = BridgeManager()
+
+            # Inject a mock serial transport into the poller
+            mock_serial_t = MagicMock(spec=SerialTransport)
+            if manager.pollers:
+                manager.pollers[0].transport = mock_serial_t
+                manager.pollers[0]._fallback = None
+
+            return manager, mock_serial_t
+
+    @pytest.mark.asyncio
+    async def test_handle_check_credentials_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.check_default_credentials = AsyncMock(return_value=True)
+        result = await manager._handle_check_credentials("test-pdu")
+        assert result["default_credentials_active"] is True
+        mock_t.check_default_credentials.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_change_password_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.change_password = AsyncMock(return_value=True)
+        result = await manager._handle_change_password("test-pdu", "admin", "newpass")
+        assert result["ok"] is True
+        mock_t.change_password.assert_called_once_with("admin", "newpass")
+
+    @pytest.mark.asyncio
+    async def test_handle_get_network_config_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.get_network_config = AsyncMock(return_value={"ip": "10.0.0.1"})
+        result = await manager._handle_get_network_config("test-pdu")
+        assert result["ip"] == "10.0.0.1"
+
+    @pytest.mark.asyncio
+    async def test_handle_set_device_threshold_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.set_device_threshold = AsyncMock(return_value=True)
+        result = await manager._handle_set_device_threshold("test-pdu", {"overload": 80})
+        assert result["ok"] is True
+        mock_t.set_device_threshold.assert_called_once_with("overload", 80)
+
+    @pytest.mark.asyncio
+    async def test_handle_set_outlet_config_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.configure_outlet = AsyncMock(return_value=True)
+        result = await manager._handle_set_outlet_config("test-pdu", 1, {"name": "Server1"})
+        assert result["ok"] is True
+        mock_t.configure_outlet.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_get_eventlog_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.get_event_log = AsyncMock(return_value=[{"event": "test"}])
+        result = await manager._handle_get_eventlog("test-pdu")
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_handle_set_trap_receiver_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.set_trap_receiver = AsyncMock(return_value=True)
+        result = await manager._handle_set_trap_receiver("test-pdu", 1, {"ip": "10.0.0.2"})
+        assert result["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_handle_set_network_config_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.set_network_config = AsyncMock(return_value=True)
+        result = await manager._handle_set_network_config("test-pdu", {"ip": "10.0.0.5"})
+        assert result["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_handle_get_energywise_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.get_energywise_config = AsyncMock(return_value={"domain": "test"})
+        result = await manager._handle_get_energywise("test-pdu")
+        assert result["domain"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_handle_set_energywise_routes_to_serial(self):
+        manager, mock_t = self._make_manager()
+        mock_t.set_energywise_config = AsyncMock(return_value=True)
+        result = await manager._handle_set_energywise("test-pdu", {"domain": "new"})
+        assert result["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_management_callback_missing_device_raises(self):
+        manager, _ = self._make_manager()
+        with pytest.raises(RuntimeError, match="No transport"):
+            await manager._handle_get_network_config("nonexistent-pdu")

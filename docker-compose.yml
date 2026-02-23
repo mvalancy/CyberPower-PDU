@@ -60,12 +60,20 @@ services:
         condition: service_healthy
     volumes:
       - bridge-data:/data
+      - /dev/serial:/dev/serial:ro
+    device_cgroup_rules:
+      - 'c 188:* rwm'
     environment:
       - PDU_HOST=${PDU_HOST}
       - PDU_SNMP_PORT=${PDU_SNMP_PORT}
       - PDU_COMMUNITY_READ=${PDU_COMMUNITY_READ}
       - PDU_COMMUNITY_WRITE=${PDU_COMMUNITY_WRITE}
       - PDU_DEVICE_ID=${PDU_DEVICE_ID}
+      - PDU_SERIAL_PORT=${PDU_SERIAL_PORT:-}
+      - PDU_SERIAL_BAUD=${PDU_SERIAL_BAUD:-9600}
+      - PDU_SERIAL_USERNAME=${PDU_SERIAL_USERNAME:-cyber}
+      - PDU_SERIAL_PASSWORD=${PDU_SERIAL_PASSWORD:-cyber}
+      - PDU_TRANSPORT=${PDU_TRANSPORT:-snmp}
       - MQTT_BROKER=127.0.0.1
       - MQTT_PORT=1883
       - BRIDGE_POLL_INTERVAL=${BRIDGE_POLL_INTERVAL}
@@ -80,6 +88,10 @@ services:
       - BRIDGE_PDUS_FILE=/data/pdus.json
       - HISTORY_RETENTION_DAYS=${HISTORY_RETENTION_DAYS:-60}
       - HOUSE_MONTHLY_KWH=${HOUSE_MONTHLY_KWH:-0}
+      - BRIDGE_WEB_USERNAME=${BRIDGE_WEB_USERNAME:-admin}
+      - BRIDGE_WEB_PASSWORD=${BRIDGE_WEB_PASSWORD:-}
+      - BRIDGE_SESSION_SECRET=${BRIDGE_SESSION_SECRET:-}
+      - BRIDGE_SESSION_TIMEOUT=${BRIDGE_SESSION_TIMEOUT:-86400}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')\" || exit 1"]

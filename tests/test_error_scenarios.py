@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Error scenario and edge-case tests for config, automation, and history."""
@@ -1269,6 +1269,58 @@ class TestConfigIntFloatHelpers:
         os.environ.pop("_TEST_MISSING_F", None)
         val = Config._float("_TEST_MISSING_F", "1.5", 0, 10)
         assert val == pytest.approx(1.5)
+
+
+class TestConfigSettingsPersistence:
+    """Test save/load of bridge settings to JSON file."""
+
+    def test_save_and_load_settings(self):
+        cfg = Config()
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+        try:
+            cfg.mqtt_broker = "mqtt.example.com"
+            cfg.mqtt_port = 8883
+            cfg.poll_interval = 10.0
+            cfg.log_level = "DEBUG"
+            cfg.history_retention_days = 30
+            cfg.save_settings(path)
+
+            cfg2 = Config()
+            cfg2.load_saved_settings(path)
+            assert cfg2.mqtt_broker == "mqtt.example.com"
+            assert cfg2.mqtt_port == 8883
+            assert cfg2.poll_interval == 10.0
+            assert cfg2.log_level == "DEBUG"
+            assert cfg2.history_retention_days == 30
+        finally:
+            os.unlink(path)
+
+    def test_load_missing_file(self):
+        cfg = Config()
+        original_broker = cfg.mqtt_broker
+        cfg.load_saved_settings("/tmp/nonexistent_settings.json")
+        assert cfg.mqtt_broker == original_broker  # unchanged
+
+    def test_settings_dict(self):
+        cfg = Config()
+        d = cfg.settings_dict
+        assert "mqtt_broker" in d
+        assert "poll_interval" in d
+        assert "log_level" in d
+        assert "history_retention_days" in d
+
+    def test_load_corrupt_file(self):
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+            f.write("not json")
+            path = f.name
+        try:
+            cfg = Config()
+            original_broker = cfg.mqtt_broker
+            cfg.load_saved_settings(path)  # Should not raise
+            assert cfg.mqtt_broker == original_broker  # unchanged
+        finally:
+            os.unlink(path)
 
 
 class TestAutomationLoadCorruptFile:

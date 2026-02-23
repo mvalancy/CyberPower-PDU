@@ -218,6 +218,8 @@ Now that you have the bridge running, here are some things to explore:
 | Rebuild after code changes | `docker compose up -d --build` |
 | View bridge logs | `docker compose logs -f bridge` |
 | Watch MQTT traffic | `mosquitto_sub -t 'pdu/#' -v` |
-| Run tests | `pytest tests/ -v` |
-| Run tests with mock data | `./test --mock` |
+| Run unit tests (934 tests) | `./test` |
+| Run browser E2E tests (119 tests) | `./test --e2e-mock` |
+| Run hardware validation | `PDU_HOST=x.x.x.x ./test --hardware` |
+| Run mock integration test | `./test --mock` |
 | Open dashboard | `http://localhost:8080` |

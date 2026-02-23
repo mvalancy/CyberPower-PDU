@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """SQLite history storage with 1Hz sample recording and weekly reports."""
@@ -38,6 +38,14 @@ class HistoryStore:
         self._migrate_device_id()
         self._create_indexes()
 
+    @property
+    def retention_days(self) -> int:
+        return self._retention_days
+
+    @retention_days.setter
+    def retention_days(self, value: int):
+        self._retention_days = max(1, min(365, value))
+
     def _create_tables(self):
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS bank_samples (
@@ -69,6 +77,17 @@ class HistoryStore:
                 data TEXT NOT NULL,
                 device_id TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS environment_samples (
+                ts INTEGER NOT NULL,
+                temperature REAL,
+                humidity REAL,
+                contact_1 INTEGER,
+                contact_2 INTEGER,
+                contact_3 INTEGER,
+                contact_4 INTEGER,
+                device_id TEXT NOT NULL DEFAULT ''
+            );
         """)
         self._conn.commit()
 
@@ -77,6 +96,7 @@ class HistoryStore:
         self._conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_bank_ts ON bank_samples(ts);
             CREATE INDEX IF NOT EXISTS idx_outlet_ts ON outlet_samples(ts);
+            CREATE INDEX IF NOT EXISTS idx_env_ts ON environment_samples(ts);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_report_week
                 ON energy_reports(week_start, device_id);
         """)
@@ -159,6 +179,23 @@ class HistoryStore:
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (now, n, outlet.state, outlet.current,
                      outlet.power, outlet.energy, device_id),
+                )
+
+            # Environment samples (only when sensor present)
+            if data.environment and data.environment.sensor_present:
+                env = data.environment
+                contacts = env.contacts or {}
+                self._conn.execute(
+                    "INSERT INTO environment_samples "
+                    "(ts, temperature, humidity, contact_1, contact_2, "
+                    "contact_3, contact_4, device_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (now, env.temperature, env.humidity,
+                     int(contacts.get(1, False)),
+                     int(contacts.get(2, False)),
+                     int(contacts.get(3, False)),
+                     int(contacts.get(4, False)),
+                     device_id),
                 )
 
             # Commit every 10 writes (~10 seconds) to batch disk I/O
@@ -281,8 +318,9 @@ class HistoryStore:
         try:
             c1 = self._conn.execute("DELETE FROM bank_samples WHERE ts < ?", (cutoff,))
             c2 = self._conn.execute("DELETE FROM outlet_samples WHERE ts < ?", (cutoff,))
+            c3 = self._conn.execute("DELETE FROM environment_samples WHERE ts < ?", (cutoff,))
             self._conn.commit()
-            total = (c1.rowcount or 0) + (c2.rowcount or 0)
+            total = (c1.rowcount or 0) + (c2.rowcount or 0) + (c3.rowcount or 0)
             if total > 0:
                 logger.info("History cleanup: removed %d rows older than %d days",
                             total, self._retention_days)

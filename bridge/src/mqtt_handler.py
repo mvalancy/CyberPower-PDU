@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """MQTT pub/sub handler — publishes PDU data, subscribes for commands, HA discovery.
@@ -89,6 +89,21 @@ class MQTTHandler:
         """
         self._device_callbacks[device_id] = callback
         logger.info("Registered device %s for MQTT commands", device_id)
+
+    def unregister_device(self, device_id: str):
+        """Remove a device's callback, HA discovery state, and publish offline.
+
+        Called when a PDU is removed at runtime.
+        """
+        self._device_callbacks.pop(device_id, None)
+        self._ha_discovery_sent.pop(device_id, None)
+        try:
+            self._publish(
+                f"pdu/{device_id}/bridge/status", "offline", qos=1, retain=True
+            )
+        except Exception:
+            logger.debug("Failed to publish offline for %s", device_id)
+        logger.info("Unregistered device %s from MQTT", device_id)
 
     # ------------------------------------------------------------------
     # Connection
@@ -200,6 +215,10 @@ class MQTTHandler:
                 device_id = parts[1]
                 outlet_num = int(parts[3])
                 command = msg.payload.decode("utf-8").strip().lower()
+                valid_mqtt_commands = {"on", "off", "reboot", "delayon", "delayoff", "cancel"}
+                if command not in valid_mqtt_commands:
+                    logger.warning("Unknown MQTT command: %s", command)
+                    return
                 logger.info("Command received: device=%s outlet=%d -> %s", device_id, outlet_num, command)
 
                 if not self._loop:
@@ -269,6 +288,35 @@ class MQTTHandler:
                 self._publish(f"{op}/power", str(outlet.power), retain=True)
             if outlet.energy is not None:
                 self._publish(f"{op}/energy", str(outlet.energy), retain=True)
+
+        # ATS config data
+        if data.voltage_sensitivity:
+            self._publish(f"{prefix}/ats/voltage_sensitivity", data.voltage_sensitivity, retain=True)
+        if data.transfer_voltage is not None:
+            self._publish(f"{prefix}/ats/transfer_voltage", str(data.transfer_voltage), retain=True)
+        if data.voltage_upper_limit is not None:
+            self._publish(f"{prefix}/ats/voltage_upper_limit", str(data.voltage_upper_limit), retain=True)
+        if data.voltage_lower_limit is not None:
+            self._publish(f"{prefix}/ats/voltage_lower_limit", str(data.voltage_lower_limit), retain=True)
+        if data.total_load is not None:
+            self._publish(f"{prefix}/total/load", str(data.total_load), retain=True)
+        if data.total_power is not None:
+            self._publish(f"{prefix}/total/power", str(data.total_power), retain=True)
+        if data.total_energy is not None:
+            self._publish(f"{prefix}/total/energy", str(data.total_energy), retain=True)
+
+        # Environment (only when sensor present)
+        if data.environment and data.environment.sensor_present:
+            env = data.environment
+            if env.temperature is not None:
+                self._publish(f"{prefix}/environment/temperature", str(env.temperature), retain=True)
+            if env.humidity is not None:
+                self._publish(f"{prefix}/environment/humidity", str(env.humidity), retain=True)
+            for contact_id, closed in env.contacts.items():
+                self._publish(
+                    f"{prefix}/environment/contact/{contact_id}",
+                    "closed" if closed else "open", retain=True,
+                )
 
         # Banks
         for idx, bank in data.banks.items():
@@ -445,6 +493,52 @@ class MQTTHandler:
                 f"homeassistant/sensor/{uid}/config",
                 json.dumps(config),
                 retain=True,
+            )
+
+        # ATS config sensors
+        for metric, unit, icon in [
+            ("voltage_sensitivity", "", "mdi:tune"),
+            ("transfer_voltage", "V", "mdi:flash-triangle-outline"),
+            ("voltage_upper_limit", "V", "mdi:arrow-up-bold"),
+            ("voltage_lower_limit", "V", "mdi:arrow-down-bold"),
+        ]:
+            uid = f"{dev}_ats_{metric}"
+            config = {
+                "name": f"ATS {metric.replace('_', ' ').title()}",
+                "unique_id": uid,
+                "device": device_info,
+                "availability": avail,
+                "state_topic": f"{base}/ats/{metric}",
+                "icon": icon,
+            }
+            if unit:
+                config["unit_of_measurement"] = unit
+            self._publish(
+                f"homeassistant/sensor/{uid}/config",
+                json.dumps(config), retain=True,
+            )
+
+        # Total load/power/energy sensors
+        for metric, unit, dev_class, icon in [
+            ("load", "A", "current", "mdi:current-ac"),
+            ("power", "W", "power", "mdi:flash"),
+            ("energy", "kWh", "energy", "mdi:lightning-bolt"),
+        ]:
+            uid = f"{dev}_total_{metric}"
+            config = {
+                "name": f"Total {metric.title()}",
+                "unique_id": uid,
+                "device": device_info,
+                "availability": avail,
+                "state_topic": f"{base}/total/{metric}",
+                "unit_of_measurement": unit,
+                "device_class": dev_class,
+                "state_class": "measurement" if metric != "energy" else "total_increasing",
+                "icon": icon,
+            }
+            self._publish(
+                f"homeassistant/sensor/{uid}/config",
+                json.dumps(config), retain=True,
             )
 
         # Bridge status binary sensor

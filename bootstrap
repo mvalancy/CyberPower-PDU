@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 set -euo pipefail
 
@@ -11,8 +11,9 @@ source lib/common.sh
 check_help "${1:-}" "./bootstrap" "Install system dependencies for development and testing" \
 "Usage: ./bootstrap
 
-Installs Docker, mosquitto-clients, SNMP tools, and Python test
-dependencies. Requires sudo. Run once on a fresh machine."
+Installs Docker, mosquitto-clients, SNMP tools, Python test
+dependencies, and serial port access. Requires sudo. Run once
+on a fresh machine."
 
 banner
 step "Installing system dependencies"
@@ -34,21 +35,56 @@ if ! sudo systemctl is-active --quiet docker; then
     success "Docker service started"
 fi
 
+# Serial port access (dialout group)
+step "Configuring serial port access"
+if groups | grep -q dialout; then
+    success "Already in dialout group"
+else
+    info "Adding $USER to dialout group for serial port access..."
+    sudo usermod -aG dialout "$USER"
+    success "Added to dialout group. Takes effect on next login."
+fi
+
+# Detect connected serial devices
+serial_count=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | wc -l)
+if [ "$serial_count" -gt 0 ]; then
+    success "Found $serial_count serial port(s):"
+    ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | while read -r dev; do
+        echo "         $dev"
+    done
+    # Show serial-by-id for stable naming
+    if [ -d /dev/serial/by-id ]; then
+        info "Serial devices by ID:"
+        ls -la /dev/serial/by-id/ 2>/dev/null | grep -v total | while read -r line; do
+            echo "         $line"
+        done
+    fi
+else
+    info "No serial ports detected (ttyUSB/ttyACM)"
+fi
+
 # APT packages
 step "Installing mosquitto-clients, snmp tools, python3-pip"
 sudo apt-get update -qq
 sudo apt-get install -y -qq mosquitto-clients snmp python3-pip python3-venv
 
-# Python test dependencies
+# Python test dependencies (includes pyserial for serial port PDU control)
 step "Installing Python packages"
-pip install --user --break-system-packages pytest pytest-asyncio pysnmp-lextudio paho-mqtt aiohttp 2>/dev/null \
-    || pip install --user pytest pytest-asyncio pysnmp-lextudio paho-mqtt aiohttp
+pip install --user --break-system-packages pytest pytest-asyncio pysnmp-lextudio paho-mqtt aiohttp pyserial 2>/dev/null \
+    || pip install --user pytest pytest-asyncio pysnmp-lextudio paho-mqtt aiohttp pyserial
 
 echo ""
 success "All dependencies installed"
 
-# Check if we need a new shell for docker group
+# Check if we need a new shell for group changes
+_needs_relogin=false
 if ! groups | grep -q docker; then
+    _needs_relogin=true
+fi
+if ! groups | grep -q dialout; then
+    _needs_relogin=true
+fi
+if [ "$_needs_relogin" = true ]; then
     echo ""
-    warn "Log out and back in (or run 'newgrp docker') for Docker access without sudo."
+    warn "Log out and back in (or run 'newgrp docker && newgrp dialout') for Docker and serial port access."
 fi

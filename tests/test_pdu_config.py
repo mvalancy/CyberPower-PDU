@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """Unit tests for PDUConfig system — single and multi-PDU configuration."""
@@ -86,7 +86,7 @@ def test_pdu_config_validate_bad_chars():
 def test_pdu_config_validate_no_host():
     """Empty host raises ValueError."""
     cfg = PDUConfig(device_id="test", host="")
-    with pytest.raises(ValueError, match="no host configured"):
+    with pytest.raises(ValueError, match="no host or serial_port configured"):
         cfg.validate()
 
 

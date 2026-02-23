@@ -35,7 +35,7 @@ In this system's web dashboard, the ATS panel shows both power sources in real t
 - **OID** (Object Identifier): A numeric address for each piece of data the device exposes, like a street address for a specific sensor reading. See [SNMP OIDs](snmp-oids.md) for the full list.
 - **Community string**: A password-like value (e.g., `public` for read, `private` for write) used by SNMP v2c for access control.
 
-**Why SNMP?** The PDU44001 only speaks SNMP natively -- it has no REST API, no MQTT support, and no web API. SNMP is the only way to talk to this hardware. This entire project exists to bridge that SNMP data into more modern, developer-friendly protocols.
+**Why SNMP?** The PDU44001 exposes its monitoring data over SNMP natively -- it has no REST API, no MQTT support, and no web API. SNMP is the primary way to read sensor data from this hardware. For management operations (thresholds, ATS config, network settings, security), the PDU also provides an RS-232 serial console. This project bridges both protocols into modern, developer-friendly interfaces.
 
 ### What is MQTT?
 
@@ -70,13 +70,14 @@ graph TB
 
     subgraph Docker ["Docker Compose Stack"]
         subgraph BridgeContainer ["Python Bridge Container"]
-            SNMP["SNMP Client<br/><small>pysnmp-lextudio</small>"]
+            SNMP["SNMP Transport<br/><small>pysnmp-lextudio</small>"]
+            Serial["Serial Transport<br/><small>pyserial RS-232</small>"]
             Core["Bridge Core<br/><small>async poll loop</small>"]
             MQTTHandler["MQTT Handler<br/><small>paho-mqtt</small>"]
             WebServer["Web Server<br/><small>aiohttp :8080</small>"]
             History["History Store<br/><small>SQLite + WAL</small>"]
             Automation["Automation Engine<br/><small>rules + scheduling</small>"]
-            Mock["Mock PDU<br/><small>simulated data</small>"]
+            Mock["Mock PDU<br/><small>simulated data + mgmt</small>"]
         end
 
         Mosquitto["Mosquitto Broker<br/><small>:1883 MQTT, :9001 WS</small>"]
@@ -91,7 +92,9 @@ graph TB
     end
 
     PDU <-->|"SNMP v2c<br/>GET/SET"| SNMP
+    PDU <-->|"RS-232<br/>Serial CLI"| Serial
     SNMP --> Core
+    Serial --> Core
     Core --> MQTTHandler
     Core --> History
     Core --> Automation
@@ -108,6 +111,7 @@ graph TB
     style Consumers fill:#1e293b,stroke:#10b981,color:#f8fafc
     style PDU fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
     style SNMP fill:#1a1a2e,stroke:#06b6d4,color:#e2e4e9
+    style Serial fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
     style Core fill:#1a1a2e,stroke:#0ea5e9,color:#e2e4e9
     style MQTTHandler fill:#1a1a2e,stroke:#f59e0b,color:#e2e4e9
     style WebServer fill:#1a1a2e,stroke:#8b5cf6,color:#e2e4e9
@@ -124,10 +128,10 @@ graph TB
 
 **How to read this diagram:**
 
-- **Hardware Layer** (top): The physical PDU sitting in your rack. It only speaks SNMP.
-- **Docker Compose Stack** (middle): Everything runs in Docker containers. The Python Bridge container does the heavy lifting. Mosquitto, Telegraf, and InfluxDB are optional supporting services.
+- **Hardware Layer** (top): The physical PDU sitting in your rack. It speaks SNMP for monitoring and RS-232 serial for management.
+- **Docker Compose Stack** (middle): Everything runs in Docker containers. The Python Bridge container does the heavy lifting with dual transport support (SNMP + Serial). Mosquitto, Telegraf, and InfluxDB are optional supporting services.
 - **External Consumers** (bottom): Any MQTT-capable tool can subscribe to the broker and receive live PDU data.
-- **Solid arrows** show data flow in production. The **dashed arrow** from Mock PDU is only active during development/testing.
+- **Solid arrows** show data flow in production. The **dashed arrow** from Mock PDU is only active during development/testing. In mock mode, MockPDU provides full management support for E2E testing.
 
 ---
 
@@ -259,15 +263,17 @@ graph LR
 
 The bridge is the heart of the system. It is a single Python process running an async event loop that:
 
-- Polls the PDU via SNMP GET at 1Hz (once per second)
+- Polls the PDU via SNMP GET or serial CLI at 1Hz (once per second)
+- Supports dual transport with automatic failover (SNMP primary, serial fallback or vice versa)
 - Publishes all readings to MQTT with retained messages
-- Subscribes to command topics and executes SNMP SET for outlet control
+- Subscribes to command topics and executes SNMP SET or serial commands for outlet control
+- Provides full PDU management via serial console (thresholds, ATS, network, security, notifications)
 - Stores every sample in SQLite at full 1Hz resolution (WAL mode, 60-day retention)
-- Serves a real-time web dashboard via `aiohttp` on port 8080
-- Runs an automation engine with voltage and time-of-day rules
-- Supports mock mode for development and testing (no real PDU required)
+- Serves a real-time web dashboard via `aiohttp` on port 8080 with settings and management UI
+- Runs an automation engine with voltage, time-of-day, and ATS rules
+- Supports mock mode with full management for development, E2E testing, and demos
 
-Libraries used: `pysnmp-lextudio` (SNMP), `paho-mqtt` (MQTT), `aiohttp` (web server), `sqlite3` (history).
+Libraries used: `pysnmp-lextudio` (SNMP), `pyserial` (serial), `paho-mqtt` (MQTT), `aiohttp` (web server), `sqlite3` (history).
 
 ### Mosquitto (MQTT Broker)
 
@@ -356,11 +362,14 @@ This means you always get a manageable number of data points (under 3,600) regar
 
 ## Mock Mode
 
-Setting `BRIDGE_MOCK_MODE=true` replaces the SNMP client with a simulated PDU that generates realistic data (voltage drift, per-bank metering, random outlet state changes). This is used for:
+Setting `BRIDGE_MOCK_MODE=true` replaces the SNMP/serial transports with a simulated PDU that generates realistic data (voltage drift, per-bank metering, random outlet state changes) and provides full management support (thresholds, ATS config, network settings, security, notifications). This is used for:
 
-- **Development** -- work on the dashboard or automation rules without a physical PDU.
+- **Development** -- work on the dashboard, management features, or automation rules without a physical PDU.
+- **E2E testing** -- 119 Playwright browser tests run against the mock bridge, exercising real user flows through the full stack.
 - **CI testing** -- run automated tests in environments that cannot reach real hardware.
 - **Demos** -- show the system to others without needing the actual rack hardware.
+
+The mock PDU implements the same `PDUTransport` protocol as the real SNMP and serial transports, including all management methods. This means every feature of the web dashboard works identically in mock mode and with real hardware.
 
 ---
 

@@ -1,10 +1,16 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
-"""Configuration from environment variables with validation."""
+"""Configuration from environment variables with validation.
 
+Settings can also be persisted to a JSON file via the web UI. Saved settings
+override env-var defaults on startup. Env vars that are *explicitly* set by the
+user (i.e., non-default) still take precedence.
+"""
+
+import json
 import logging
 import os
 
@@ -45,6 +51,24 @@ class Config:
         # Multi-PDU config file
         self.pdus_file = os.environ.get("BRIDGE_PDUS_FILE", "/data/pdus.json")
 
+        # Serial transport
+        self.serial_port = os.environ.get("PDU_SERIAL_PORT", "")
+        self.serial_baud = self._int("PDU_SERIAL_BAUD", "9600", 300, 115200)
+        self.serial_username = os.environ.get("PDU_SERIAL_USERNAME", "cyber")
+        self.serial_password = os.environ.get("PDU_SERIAL_PASSWORD", "cyber")
+        self.transport_primary = os.environ.get("PDU_TRANSPORT", "snmp")
+
+        # Web authentication (opt-in: set BRIDGE_WEB_PASSWORD to enable)
+        self.web_username = os.environ.get("BRIDGE_WEB_USERNAME", "admin")
+        self.web_password = os.environ.get("BRIDGE_WEB_PASSWORD", "")
+        self.session_secret = os.environ.get("BRIDGE_SESSION_SECRET", "")
+        self.session_timeout = self._int("BRIDGE_SESSION_TIMEOUT", "86400", 60, 604800)
+
+        # Bridge settings persistence file
+        self.settings_file = os.environ.get(
+            "BRIDGE_SETTINGS_FILE", "/data/bridge_settings.json"
+        )
+
         # DHCP recovery
         self.recovery_enabled = os.environ.get(
             "BRIDGE_RECOVERY_ENABLED", "true"
@@ -79,6 +103,76 @@ class Config:
         if not (min_val <= val <= max_val):
             raise ConfigError(f"{env}={val} out of range [{min_val}, {max_val}]")
         return val
+
+    # ------------------------------------------------------------------
+    # Settings persistence — save/load from JSON file
+    # ------------------------------------------------------------------
+
+    # Fields that can be saved/loaded from the settings file.
+    SAVEABLE_FIELDS = {
+        "mqtt_broker": str,
+        "mqtt_port": int,
+        "mqtt_username": str,
+        "mqtt_password": str,
+        "poll_interval": float,
+        "log_level": str,
+        "history_retention_days": int,
+        "web_username": str,
+        "web_password": str,
+        "session_timeout": int,
+        "snmp_timeout": float,
+        "snmp_retries": int,
+        "recovery_enabled": str,  # store as string to avoid bool("false") bug
+    }
+
+    def load_saved_settings(self, path: str):
+        """Load persisted settings from JSON file, overriding current values.
+
+        This allows the web UI to persist settings across restarts.
+        """
+        try:
+            with open(path) as f:
+                saved = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return  # No saved settings — use env/defaults
+
+        for field, typ in self.SAVEABLE_FIELDS.items():
+            if field in saved:
+                try:
+                    if field == "recovery_enabled":
+                        # Parse bool from string/bool
+                        val = saved[field]
+                        self.recovery_enabled = val in (True, "true", "1")
+                    else:
+                        setattr(self, field, typ(saved[field]))
+                except (ValueError, TypeError):
+                    logger.warning("Invalid saved setting %s=%r, ignoring",
+                                   field, saved[field])
+
+        logger.info("Loaded saved settings from %s", path)
+
+    def save_settings(self, path: str):
+        """Persist current saveable settings to JSON file."""
+        data = {}
+        for field in self.SAVEABLE_FIELDS:
+            val = getattr(self, field, None)
+            # Convert bools to strings for fields stored as str
+            if field == "recovery_enabled" and isinstance(val, bool):
+                val = "true" if val else "false"
+            data[field] = val
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.info("Saved settings to %s", path)
+        except OSError as e:
+            logger.error("Failed to save settings to %s: %s", path, e)
+
+    @property
+    def settings_dict(self) -> dict:
+        """Return saveable settings as a dict (for GET /api/config)."""
+        return {field: getattr(self, field, None)
+                for field in self.SAVEABLE_FIELDS}
 
     def _log_config(self):
         logger.info(

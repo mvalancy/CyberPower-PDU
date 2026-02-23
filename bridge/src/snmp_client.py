@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """SNMP GET/SET wrapper for CyberPower PDUs with health tracking.
@@ -20,6 +20,7 @@ from pysnmp.hlapi.asyncio import (
     Integer32,
     ObjectIdentity,
     ObjectType,
+    OctetString,
     SnmpEngine,
     UdpTransportTarget,
     getCmd,
@@ -200,6 +201,38 @@ class SNMPClient:
             self._record_failure(f"SET {oid}={value}: {e}")
             return False
 
+    async def set_string(self, oid: str, value: str) -> bool:
+        """SNMP SET a string value (OctetString). Returns True on success."""
+        self._total_sets += 1
+        try:
+            error_indication, error_status, error_index, var_binds = await setCmd(
+                self.engine,
+                self._write_community,
+                self._target,
+                ContextData(),
+                ObjectType(ObjectIdentity(oid), OctetString(value)),
+            )
+
+            if error_indication:
+                self._failed_sets += 1
+                self._record_failure(f"SET {oid}='{value}': {error_indication}")
+                return False
+            if error_status:
+                self._failed_sets += 1
+                self._record_failure(
+                    f"SET {oid}='{value}': {error_status.prettyPrint()} at "
+                    f"{var_binds[int(error_index) - 1][0] if error_index else '?'}"
+                )
+                return False
+
+            self._record_success()
+            return True
+
+        except Exception as e:
+            self._failed_sets += 1
+            self._record_failure(f"SET {oid}='{value}': {e}")
+            return False
+
     async def get_identity(self) -> DeviceIdentity:
         """Fetch all device identity OIDs in one batch.
 
@@ -288,6 +321,15 @@ class SNMPClient:
             retries=self._target._retries if hasattr(self._target, '_retries') else 1,
         )
         logger.info("SNMP target updated to %s:%d", self._host, self._port)
+
+    def update_snmp_params(self, timeout: float, retries: int):
+        """Update SNMP timeout and retries, rebuilding the transport target."""
+        self._target = UdpTransportTarget(
+            (self._host, self._port),
+            timeout=timeout,
+            retries=retries,
+        )
+        logger.info("SNMP params updated: timeout=%.1f retries=%d", timeout, retries)
 
     def reset_health(self):
         """Zero out failure counters after successful recovery."""

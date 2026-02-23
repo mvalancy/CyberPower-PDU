@@ -34,6 +34,30 @@ PDU_DEVICE_ID=rack1-pdu
 
 ---
 
+## Serial Transport Settings
+
+These settings enable RS-232 serial console access for full PDU management (thresholds, ATS, network, security, notifications). Serial is optional -- SNMP works for monitoring and outlet control without it.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PDU_SERIAL_PORT` | *(empty)* | Serial device path (e.g., `/dev/ttyUSB0`). Leave empty to disable serial. |
+| `PDU_SERIAL_BAUD` | `9600` | Serial baud rate |
+| `PDU_SERIAL_USERNAME` | `admin` | Serial console login username |
+| `PDU_SERIAL_PASSWORD` | `cyber` | Serial console login password |
+
+**Example:**
+
+```ini
+PDU_SERIAL_PORT=/dev/ttyUSB0
+PDU_SERIAL_BAUD=9600
+PDU_SERIAL_USERNAME=admin
+PDU_SERIAL_PASSWORD=mypassword
+```
+
+When both SNMP and serial are configured, the bridge uses SNMP as the primary transport for monitoring (faster) and serial for management operations. If one transport fails, the bridge automatically falls back to the other.
+
+---
+
 ## MQTT Settings
 
 These control how the bridge connects to the MQTT broker (Mosquitto).
@@ -80,6 +104,7 @@ These control how the bridge itself behaves.
 | `BRIDGE_RULES_FILE` | `/data/rules.json` | file path | Path to the automation rules JSON file (inside the container). |
 | `BRIDGE_PDUS_FILE` | `/data/pdus.json` | file path | Path to the multi-PDU configuration file (inside the container). |
 | `BRIDGE_OUTLET_NAMES_FILE` | `/data/outlet_names.json` | file path | Path to custom outlet name overrides (inside the container). |
+| `BRIDGE_WEB_PASSWORD` | *(empty)* | string | Set to enable web UI authentication. When set, all API endpoints require a session token. |
 
 ---
 
@@ -171,6 +196,11 @@ The file is stored at the path specified by `BRIDGE_PDUS_FILE` (default: `/data/
 | `label` | No | `""` | Human-friendly display name |
 | `enabled` | No | `true` | Set to `false` to skip this PDU without removing it from the config |
 | `num_banks` | No | `2` | Default bank count (auto-detected from SNMP at startup if available) |
+| `serial_port` | No | `""` | Serial device path (e.g., `/dev/ttyUSB0`) for management access |
+| `serial_baud` | No | `9600` | Serial baud rate |
+| `serial_username` | No | `"admin"` | Serial console login username |
+| `serial_password` | No | `"cyber"` | Serial console login password |
+| `transport` | No | `"snmp"` | Primary transport: `"snmp"`, `"serial"`, or `"both"` |
 
 See [Multi-PDU](multi-pdu.md) for the full setup guide.
 
@@ -196,7 +226,10 @@ You can manage rules through:
   "outlet": 5,
   "action": "off",
   "restore": true,
-  "delay": 5
+  "delay": 5,
+  "enabled": true,
+  "days_of_week": [0, 1, 2, 3, 4],
+  "schedule_type": "continuous"
 }
 ```
 
@@ -208,10 +241,13 @@ You can manage rules through:
 | `input` | No | `0` | Which input source to monitor: `1` = Source A, `2` = Source B. Ignored for time-based conditions. |
 | `condition` | Yes | -- | Trigger condition (see table below) |
 | `threshold` | Yes | -- | Condition threshold: voltage in volts (float), time as `"HH:MM"`, or time range as `"HH:MM-HH:MM"` |
-| `outlet` | Yes | -- | Outlet number to act on (1-based) |
+| `outlet` | Yes | -- | Outlet number (1-based), comma-separated list (`"1,3,5"`), or range (`"1-4"`) |
 | `action` | Yes | -- | Action when triggered: `"on"` or `"off"` |
 | `restore` | No | `true` | Reverse the action when the condition clears |
 | `delay` | No | `5` | Seconds the condition must hold before the rule fires |
+| `enabled` | No | `true` | Set to `false` to disable without deleting |
+| `days_of_week` | No | `null` | Array of day numbers (0=Mon, 6=Sun). `null` = every day. |
+| `schedule_type` | No | `"continuous"` | `"continuous"` (re-arms) or `"oneshot"` (auto-disables after firing once) |
 
 ### Available conditions
 

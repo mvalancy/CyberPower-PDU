@@ -213,13 +213,50 @@ acl_file /mosquitto/config/acl
 
 ---
 
-## 3. Web Dashboard / REST API
+## 3. PDU Default Credentials
 
-The bridge's web server (port 8080) has no built-in authentication. Anyone who can reach it can view PDU data, control outlets, and manage automation rules.
+CyberPower PDUs ship with factory default credentials (`cyber`/`cyber`). The bridge automatically detects this and shows a security banner on the dashboard.
 
-### Reverse proxy with authentication
+### Automatic detection
 
-Place the bridge behind a reverse proxy (nginx, Caddy, Traefik) that handles authentication and TLS.
+When the bridge has serial transport (or runs in mock mode), it checks on first poll whether the PDU admin account still uses the factory default password. If so:
+
+- A **security banner** appears at the top of the dashboard
+- A `security_warning` event is logged in the events panel
+- The Manage tab highlights the security section
+
+### Changing the PDU password
+
+You can change the PDU password through:
+
+1. **Web dashboard** -- Click the security banner or go to Settings > Manage > Security and use the password change form.
+2. **REST API:**
+
+```bash
+curl -X POST http://localhost:8080/api/pdu/security/password \
+  -H 'Content-Type: application/json' \
+  -d '{"account": "admin", "password": "YourNewSecurePassword"}'
+```
+
+3. **PDU serial console** -- Connect directly via RS-232 and use the `usrcfg set` command.
+
+After changing the password, the security banner disappears on the next poll cycle.
+
+---
+
+## 4. Web Dashboard / REST API
+
+The bridge has **optional built-in authentication** via session tokens. By default, the web UI is open (no login required). To enable authentication, set `BRIDGE_WEB_PASSWORD` in your `.env`:
+
+```ini
+BRIDGE_WEB_PASSWORD=your-secure-password
+```
+
+When enabled, the dashboard shows a login overlay and all API endpoints (except `/`, `/api/auth/*`, and `/api/health`) require a valid session token.
+
+### Reverse proxy with authentication (alternative)
+
+For more advanced setups, place the bridge behind a reverse proxy (nginx, Caddy, Traefik) that handles authentication and TLS.
 
 **nginx example** (`/etc/nginx/sites-available/pdu`):
 
@@ -264,7 +301,7 @@ sudo iptables -A INPUT -p tcp --dport 8080 -j DROP
 
 ---
 
-## 4. InfluxDB Hardening
+## 5. InfluxDB Hardening
 
 The default InfluxDB configuration uses weak credentials that should be changed immediately.
 
@@ -308,7 +345,7 @@ ports:
 
 ---
 
-## 5. Network-Level Security
+## 6. Network-Level Security
 
 ### Firewall rules
 
@@ -353,10 +390,11 @@ docker compose up -d --build
 
 | Item | Default | Recommended |
 |------|---------|-------------|
+| PDU admin password | `cyber`/`cyber` (factory) | Change via dashboard or API immediately |
 | SNMP community strings | `public` / `private` | Change to unique strings |
 | MQTT authentication | Anonymous | Enable username/password |
 | MQTT encryption | None (plain text) | Enable TLS |
-| Web dashboard auth | None | Reverse proxy with auth |
+| Web dashboard auth | None | Set `BRIDGE_WEB_PASSWORD` or use reverse proxy |
 | InfluxDB credentials | `admin` / `changeme123` | Change before first run |
 | InfluxDB network | Exposed on :8086 | Bind to localhost or disable port mapping |
 | Firewall | None | Restrict to trusted networks |

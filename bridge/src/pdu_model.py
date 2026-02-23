@@ -1,6 +1,6 @@
 # CyberPower PDU Bridge
 # Created by Matthew Valancy, Valpatel Software LLC
-# Copyright 2026 MIT License
+# Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
 """OID constants and data models for CyberPower PDUs.
@@ -159,6 +159,18 @@ OUTLET_CMD_MAP = {
 }
 
 ATS_SOURCE_MAP = {1: "A", 2: "B"}
+ATS_SOURCE_REVERSE = {"A": 1, "B": 2}
+
+
+# --- Environmental sensor OIDs (CPS-MIB enviro subtree) ---
+ENVIRO_BASE = f"{BASE_OID}.6"
+OID_ENVIRO_TEMPERATURE = f"{ENVIRO_BASE}.1.0"     # Temperature (tenths degree)
+OID_ENVIRO_TEMP_UNIT = f"{ENVIRO_BASE}.2.0"       # 1=C, 2=F
+OID_ENVIRO_HUMIDITY = f"{ENVIRO_BASE}.3.0"        # Humidity (percent)
+OID_ENVIRO_CONTACT_1 = f"{ENVIRO_BASE}.4.1.0"    # Contact 1 (1=open,2=closed)
+OID_ENVIRO_CONTACT_2 = f"{ENVIRO_BASE}.4.2.0"
+OID_ENVIRO_CONTACT_3 = f"{ENVIRO_BASE}.4.3.0"
+OID_ENVIRO_CONTACT_4 = f"{ENVIRO_BASE}.4.4.0"
 
 SOURCE_VOL_STATUS_MAP = {1: "normal", 2: "overVoltage", 3: "underVoltage"}
 
@@ -242,6 +254,16 @@ class SourceData:
 
 
 @dataclass
+class EnvironmentalData:
+    """Environmental sensor data (ENVIROSENSOR probe)."""
+    temperature: float | None = None      # degrees
+    temperature_unit: str = "C"           # "C" or "F"
+    humidity: float | None = None         # percent
+    contacts: dict[int, bool] = field(default_factory=dict)  # 1-4 (True=closed)
+    sensor_present: bool = False
+
+
+@dataclass
 class PDUData:
     device_name: str = ""
     outlet_count: int = 0
@@ -258,5 +280,17 @@ class PDUData:
     source_a: SourceData | None = None
     source_b: SourceData | None = None
     redundancy_ok: bool | None = None
+    # ATS extended config (from serial srccfg/devcfg)
+    voltage_sensitivity: str = ""          # "Normal"/"High"/"Low" from srccfg
+    transfer_voltage: float | None = None  # from srccfg
+    voltage_upper_limit: float | None = None
+    voltage_lower_limit: float | None = None
+    total_load: float | None = None        # from devsta (amps)
+    total_power: float | None = None       # from devsta (watts)
+    total_energy: float | None = None      # from devsta (kWh)
+    coldstart_delay: int | None = None     # from devcfg (seconds)
+    coldstart_state: str = ""              # "allon" or "prevstate"
+    # Environmental sensor (optional, graceful when absent)
+    environment: 'EnvironmentalData | None' = None
     # Device identity (queried at startup, included in every snapshot)
     identity: DeviceIdentity | None = None
