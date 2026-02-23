@@ -4,6 +4,8 @@
 
 This guide is organized by symptom. Find the problem you are experiencing and follow the diagnostic steps.
 
+> **Tip:** Every script logs its output to the `logs/` directory. If something went wrong during startup, check the most recent log file there. You can also run `./start --logs` to follow live container output.
+
 ---
 
 ## Dashboard Shows No Data
@@ -13,13 +15,13 @@ The web dashboard loads but all values are blank, zero, or showing "no data."
 ### Step 1: Check if the bridge is running
 
 ```bash
-docker compose ps
+./start --status
 ```
 
 Look for the `bridge` container. It should show `Up` and `healthy`. If it shows `unhealthy` or is not running, check the logs:
 
 ```bash
-docker compose logs bridge --tail 50
+./start --logs
 ```
 
 ### Step 2: Check the health endpoint
@@ -53,7 +55,7 @@ Replace `192.168.20.177` with your PDU's IP and `public` with your read communit
 ### Step 4: Check bridge logs for SNMP errors
 
 ```bash
-docker compose logs bridge --tail 100 | grep -i snmp
+./start --logs
 ```
 
 Look for:
@@ -70,10 +72,10 @@ If you cannot reach the PDU, verify the rest of the stack works with simulated d
 BRIDGE_MOCK_MODE=true
 ```
 
-Then restart:
+Then rebuild and restart:
 
 ```bash
-docker compose up -d --build
+./start --rebuild
 ```
 
 If the dashboard works in mock mode, the problem is SNMP connectivity to your PDU.
@@ -87,14 +89,10 @@ The bridge appears to be running, but no messages appear on MQTT topics.
 ### Step 1: Check if Mosquitto is running
 
 ```bash
-docker compose ps mosquitto
+./start --status
 ```
 
-It should show `healthy`. If not:
-
-```bash
-docker compose logs mosquitto --tail 50
-```
+The Mosquitto container should show `healthy`.
 
 ### Step 2: Subscribe and listen
 
@@ -122,10 +120,10 @@ Look at `subsystems.mqtt.connected`. If `false`:
 curl http://localhost:8080/api/health | python3 -m json.tool
 ```
 
-Look at `subsystems.mqtt.publish_errors`. A non-zero value indicates the bridge is trying to publish but failing. Check the bridge logs:
+Look at `subsystems.mqtt.publish_errors`. A non-zero value indicates the bridge is trying to publish but failing. Check the logs:
 
 ```bash
-docker compose logs bridge | grep -i mqtt
+./start --logs
 ```
 
 ### Step 5: Test the broker directly
@@ -191,7 +189,7 @@ The SQLite database (`history.db`) is consuming too much disk space.
 ### Check current size
 
 ```bash
-docker compose exec bridge ls -lh /data/history.db
+./start --db-size
 ```
 
 ### Understand the growth rate
@@ -216,7 +214,7 @@ The hourly cleanup task will delete data older than this threshold.
 Restart the bridge to trigger an immediate cleanup cycle, or wait for the next hourly cleanup:
 
 ```bash
-docker compose restart bridge
+./start --restart
 ```
 
 ### Reduce poll frequency
@@ -234,13 +232,7 @@ This reduces database growth by 5x.
 SQLite does not automatically shrink the file after deleting rows. To reclaim disk space:
 
 ```bash
-docker compose exec bridge python3 -c "
-import sqlite3
-conn = sqlite3.connect('/data/history.db')
-conn.execute('VACUUM')
-conn.close()
-print('Database compacted')
-"
+./start --db-compact
 ```
 
 ---
@@ -287,7 +279,7 @@ print(f'Source B: {ats[\"source_b\"][\"voltage\"]}V')
 For **time-based rules**, the bridge uses the container's local time. Verify the container's timezone is correct:
 
 ```bash
-docker compose exec bridge date
+./start --check-time
 ```
 
 ### Step 4: Check the delay
@@ -297,10 +289,10 @@ Rules have a `delay` field (default: 5 seconds). The condition must be continuou
 ### Step 5: Check for command errors in logs
 
 ```bash
-docker compose logs bridge | grep -i "command failed"
+./start --logs
 ```
 
-If the rule triggers but the SNMP SET command fails, the rule's condition timer resets and it retries on the next cycle.
+Look for `command failed` messages. If the rule triggers but the SNMP SET command fails, the rule's condition timer resets and it retries on the next cycle.
 
 ### Step 6: Test with a simple rule
 
@@ -337,7 +329,7 @@ The bridge container exits immediately after starting.
 ### Check the logs
 
 ```bash
-docker compose logs bridge
+./start --logs
 ```
 
 Common errors:
@@ -379,7 +371,7 @@ You should see retained configuration messages for switches and sensors. If not,
 Restart the bridge to trigger a fresh discovery publish:
 
 ```bash
-docker compose restart bridge
+./start --restart
 ```
 
 ### Verify Home Assistant MQTT setup
@@ -440,7 +432,7 @@ If no devices appear, check that the USB-to-serial adapter is connected and its 
 ### Step 2: Check permissions
 
 ```bash
-# Add your user to the dialout group
+# Run ./bootstrap to set up serial port access, or manually:
 sudo usermod -aG dialout $USER
 ```
 
@@ -457,7 +449,7 @@ Type `sys show` and press Space. You should see a login prompt. The CyberPower P
 ### Step 4: Check bridge logs
 
 ```bash
-docker compose logs bridge | grep -i serial
+./start --logs
 ```
 
-Look for connection errors, authentication failures, or timeout messages.
+Look for serial connection errors, authentication failures, or timeout messages.

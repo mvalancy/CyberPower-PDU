@@ -6,6 +6,85 @@ This guide takes you from zero to a running dashboard in about five minutes. By 
 
 ---
 
+## Why Would I Want It?
+
+- **Dual-source power monitoring** — See both inputs in real time: grid on A, battery/solar on B. Know instantly when the ATS transfers.
+- **Protect equipment during transfers** — Automation rules shed non-critical loads before a transfer, preventing backfeed or overloading a battery inverter.
+- **See everything at a glance** — Live dashboard: outlet states, power draw per bank, ATS status, per-source voltage/frequency.
+- **Control outlets remotely** — On/off/reboot from the web UI, MQTT, or REST API.
+- **Track power history** — 60 days of 1-second charts with CSV export.
+- **Automate with rules** — "If voltage drops below 108V, turn off outlet 5." "When ATS switches to Source B, shed the lab." "At 10 PM, lights off."
+- **Home Assistant integration** — MQTT auto-discovery creates switches and sensors automatically.
+- **Multiple PDUs** — One bridge instance handles any number of CyberPower PDUs.
+- **Full device management** — Change thresholds, ATS settings, network config, passwords, and notifications from the web UI (requires serial connection or mock mode).
+
+---
+
+## Features
+
+### Real-Time Monitoring
+- ATS dual-source monitoring with animated transfer switch diagram
+- Per-bank voltage, current, power, apparent power, and power factor
+- Per-outlet state, current, power, and cumulative energy (kWh)
+- Environmental monitoring (temperature, humidity, contact closures)
+- 1-second poll resolution
+
+### Dual Transport: SNMP + Serial
+- SNMP (network) for monitoring and basic outlet control
+- RS-232 serial console for full PDU management
+- Automatic failover between transports with health tracking
+- Serial port auto-discovery for USB-to-serial adapters
+
+### Outlet Control
+- On/off/reboot via web dashboard, MQTT, or REST API
+- Delayed on/off commands with cancel support
+- Custom outlet naming with persistence across restarts
+
+### Full PDU Management (via Serial)
+- Load threshold configuration (overload, near-overload, low-load per bank)
+- ATS configuration (preferred source, sensitivity, voltage limits, coldstart delay)
+- Network configuration (IP, subnet, gateway, DHCP)
+- Security: default credential detection, password change
+- Notification configuration (SNMP traps, SMTP, email recipients, syslog)
+- EnergyWise power saving configuration
+- User account management
+- Event log viewer
+
+### Historical Data
+- 60 days of 1Hz samples in SQLite (WAL mode)
+- Auto-downsampling for fast chart rendering (1s to 30m resolution)
+- CSV export for banks and outlets
+- Weekly energy reports with per-outlet breakdown
+
+### Automation Engine
+- Voltage threshold rules (brownout protection)
+- ATS source monitoring (backup power shedding)
+- Time-of-day schedules with midnight wrapping
+- Days-of-week filtering and one-shot rules
+- Multi-outlet targeting (comma-separated or range syntax)
+- Auto-restore when conditions clear
+- Enable/disable toggle per rule
+
+### Home Assistant Integration
+- MQTT auto-discovery for switches, sensors, and binary sensors
+- Per-device entities with model and firmware metadata
+- Bridge online/offline status via LWT
+
+### Multi-PDU Support
+- Monitor any number of PDUs from a single bridge instance
+- Per-device MQTT namespacing, automation rules, and outlet names
+- Network scanner and interactive setup wizard (`./wizard`)
+- REST API for runtime PDU management (add/remove/test)
+
+### Health & Resilience
+- Docker HEALTHCHECK integration
+- DHCP resilience: if your PDU changes IP, the bridge auto-recovers via subnet scan or serial fallback
+- Graduated state machine (HEALTHY > DEGRADED > RECOVERING > LOST)
+- MQTT publish queue with reconnect drain
+- SQLite auto-recovery after write errors
+
+---
+
 ## Prerequisites
 
 You need two things installed on the machine that will run the bridge:
@@ -84,7 +163,7 @@ See [Configuration](configuration.md) for the full list of settings.
 ## Step 5: Start the Stack
 
 ```bash
-./run
+./start
 ```
 
 This starts four Docker containers:
@@ -131,7 +210,7 @@ Then run:
 
 ```bash
 ./setup
-./run
+./start
 ```
 
 The bridge generates realistic simulated data: voltage drift around 120V, varying current per bank, random outlet state changes, and ATS source switching. Everything works the same as with a real PDU -- MQTT topics are published, history is recorded, automation rules fire, and the dashboard updates in real time.
@@ -162,7 +241,7 @@ pdu/pdu44001/outlet/1/state on
 ### Check bridge logs
 
 ```bash
-docker compose logs -f bridge
+./start --logs
 ```
 
 Look for lines like:
@@ -213,13 +292,16 @@ Now that you have the bridge running, here are some things to explore:
 
 | Action | Command |
 |--------|---------|
-| Start the stack | `./run` |
-| Stop the stack | `docker compose down` |
-| Rebuild after code changes | `docker compose up -d --build` |
-| View bridge logs | `docker compose logs -f bridge` |
+| Start the stack | `./start` |
+| Stop the stack | `./start --stop` |
+| Restart the stack | `./start --restart` |
+| Rebuild after code changes | `./start --rebuild` |
+| Check service status | `./start --status` |
+| View live logs | `./start --logs` |
+| Enable auto-start on boot | `./start --install` |
 | Watch MQTT traffic | `mosquitto_sub -t 'pdu/#' -v` |
-| Run unit tests (934 tests) | `./test` |
-| Run browser E2E tests (119 tests) | `./test --e2e-mock` |
+| Run unit tests | `./test` |
+| Run browser E2E tests | `./test --e2e-mock` |
 | Run hardware validation | `PDU_HOST=x.x.x.x ./test --hardware` |
 | Run mock integration test | `./test --mock` |
 | Open dashboard | `http://localhost:8080` |

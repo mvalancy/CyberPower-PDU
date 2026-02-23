@@ -91,11 +91,11 @@ By default, Mosquitto allows anonymous connections with no authentication or enc
 1. **Create a password file** on the host:
 
 ```bash
-# Create the password file (interactive prompt)
-docker compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd pdu-bridge
+# Create the first MQTT user (interactive password prompt)
+./start --mqtt-passwd pdu-bridge
 
 # Add additional users
-docker compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd dashboard-user
+./start --mqtt-passwd dashboard-user
 ```
 
 2. **Update mosquitto.conf** (`mosquitto/mosquitto.conf`):
@@ -140,7 +140,7 @@ MQTT_PASSWORD=your-secure-password
 5. **Restart the stack:**
 
 ```bash
-docker compose down && docker compose up -d
+./start --restart
 ```
 
 ### Enable MQTT TLS
@@ -375,13 +375,9 @@ If you do not use InfluxDB and Telegraf, you can remove them from your stack ent
 ### Keep software updated
 
 ```bash
-# Update container images
-docker compose pull
-docker compose up -d --build
-
-# Update the bridge code
+# Update the bridge code and rebuild
 git pull
-docker compose up -d --build
+./start --rebuild
 ```
 
 ---

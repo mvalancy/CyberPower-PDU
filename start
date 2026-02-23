@@ -1,0 +1,348 @@
+#!/usr/bin/env bash
+# CyberPower PDU Bridge
+# Created by Matthew Valancy, Valpatel Software LLC
+# Copyright 2026 GPL-3.0 License
+# https://github.com/mvalancy/CyberPower-PDU
+set -euo pipefail
+
+cd "$(dirname "$0")"
+source lib/common.sh
+
+SERVICE_NAME="cyber-pdu"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+PROJECT_DIR="$(pwd)"
+
+check_help "${1:-}" "./start" "Start, stop, and manage the CyberPower PDU Bridge" \
+"Usage: ./start [command]
+
+Commands:
+  (none)           Start the Docker stack and wait for services
+  --stop           Stop all containers
+  --restart        Restart all containers
+  --rebuild        Rebuild containers from source, then restart
+  --status         Show service and container status
+  --logs           Follow live container logs (Ctrl+C to stop)
+  --mqtt-passwd U  Create or update MQTT password for user U
+  --db-size        Show the history database file size
+  --db-compact     VACUUM the history database to reclaim disk space
+  --check-time     Show the bridge container's current date/time
+  --install        Install systemd service for auto-start on boot
+  --uninstall      Remove the systemd service
+  -h, --help       Show this help message
+
+Examples:
+  ./start                          Start the bridge
+  ./start --status                 Check if everything is running
+  ./start --logs                   Watch live logs
+  ./start --rebuild                Rebuild after code changes
+  ./start --mqtt-passwd pdu-bridge Set MQTT password for pdu-bridge user
+  ./start --install                Enable auto-start on boot"
+
+# --- Helpers ---
+require_env() {
+    if [ ! -f .env ]; then
+        error ".env not found. Run ./setup first."
+        exit 1
+    fi
+}
+
+require_docker() {
+    if ! command -v docker &>/dev/null; then
+        error "Docker is not installed. Run ./bootstrap first."
+        exit 1
+    fi
+    if ! docker compose version &>/dev/null; then
+        error "docker compose plugin not found. Run ./bootstrap first."
+        exit 1
+    fi
+}
+
+require_installed() {
+    if [ ! -f "$SERVICE_FILE" ]; then
+        error "Service not installed. Run ./start --install first."
+        exit 1
+    fi
+}
+
+wait_healthy() {
+    local svc="$1" timeout="$2"
+    for i in $(seq 1 "$timeout"); do
+        if docker compose ps "$svc" --format '{{.Health}}' 2>/dev/null | grep -q "healthy"; then
+            success "$svc ready"
+            return 0
+        fi
+        sleep 1
+    done
+    warn "$svc health check timeout after ${timeout}s"
+    return 1
+}
+
+# --- Command dispatch ---
+CMD="${1:-run}"
+
+case "$CMD" in
+
+# --- Start (default) ---
+run)
+    setup_log "start"
+    banner
+    require_docker
+    require_env
+
+    step "Starting CyberPower PDU Bridge"
+
+    source .env 2>/dev/null || true
+    docker compose up -d
+
+    echo ""
+    step "Waiting for services"
+    wait_healthy mosquitto 30
+    wait_healthy influxdb 60
+
+    echo ""
+    docker compose ps
+    echo ""
+    step "Services"
+    info "Web UI:   http://localhost:${BRIDGE_WEB_PORT:-8080}"
+    info "MQTT:     localhost:1883"
+    info "InfluxDB: http://localhost:8086"
+    echo ""
+    info "Next steps:"
+    info "  ./start --status    Check service health"
+    info "  ./start --logs      Watch live logs"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- Stop ---
+--stop)
+    setup_log "start-stop"
+    banner
+    require_docker
+    step "Stopping all containers"
+    docker compose down
+    success "All containers stopped"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- Restart ---
+--restart)
+    setup_log "start-restart"
+    banner
+    require_docker
+    require_env
+    step "Restarting all containers"
+    docker compose down
+    docker compose up -d
+    echo ""
+    step "Waiting for services"
+    wait_healthy mosquitto 30
+    wait_healthy influxdb 60
+    echo ""
+    docker compose ps
+    success "Restart complete"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- Rebuild ---
+--rebuild)
+    setup_log "start-rebuild"
+    banner
+    require_docker
+    require_env
+    step "Rebuilding containers from source"
+    docker compose down
+    docker compose build
+    docker compose up -d
+    echo ""
+    step "Waiting for services"
+    wait_healthy mosquitto 30
+    wait_healthy influxdb 60
+    echo ""
+    docker compose ps
+    success "Rebuild complete"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- Status ---
+--status)
+    banner
+    require_docker
+    step "Container Status"
+    docker compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || warn "Could not query containers"
+
+    # Check if systemd service is installed
+    echo ""
+    step "Boot Service"
+    if [ -f "$SERVICE_FILE" ]; then
+        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+            success "Installed and running (auto-starts on boot)"
+        elif systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+            warn "Installed and enabled, but not currently active"
+        else
+            warn "Installed but not enabled"
+        fi
+    else
+        info "Not installed — run ./start --install to enable auto-start on boot"
+    fi
+
+    # Show recent log file
+    echo ""
+    step "Recent Logs"
+    local_log=$(ls -t logs/start-*.log 2>/dev/null | head -1)
+    if [ -n "${local_log:-}" ]; then
+        info "Most recent: $local_log"
+    else
+        info "No log files yet"
+    fi
+    ;;
+
+# --- Logs ---
+--logs)
+    require_docker
+    step "Following container logs (Ctrl+C to stop)"
+    echo ""
+    docker compose logs -f 2>/dev/null || warn "Could not read container logs"
+    ;;
+
+# --- Install systemd service ---
+--install)
+    setup_log "start-install"
+    banner
+    require_docker
+    require_env
+
+    step "Installing auto-start service"
+
+    DOCKER_BIN="$(command -v docker)"
+
+    step "Creating systemd service"
+    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
+[Unit]
+Description=CyberPower PDU Bridge
+Documentation=https://github.com/mvalancy/CyberPower-PDU
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${PROJECT_DIR}
+ExecStart=${DOCKER_BIN} compose up -d
+ExecStop=${DOCKER_BIN} compose down
+ExecReload=${DOCKER_BIN} compose up -d --build
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    success "Created ${SERVICE_FILE}"
+
+    step "Enabling auto-start on boot"
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$SERVICE_NAME"
+    success "Service will start automatically on boot"
+
+    step "Starting service"
+    sudo systemctl start "$SERVICE_NAME"
+    success "Service started"
+
+    echo ""
+    step "Verifying"
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        success "Service is running"
+    else
+        warn "Service may not be running — check ./start --status"
+    fi
+
+    echo ""
+    success "Installation complete"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- Uninstall systemd service ---
+--uninstall)
+    setup_log "start-uninstall"
+    banner
+    step "Removing auto-start service"
+
+    if [ ! -f "$SERVICE_FILE" ]; then
+        warn "Service not installed (nothing to remove)"
+        exit 0
+    fi
+
+    info "Stopping service..."
+    sudo systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+
+    info "Disabling auto-start..."
+    sudo systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+
+    info "Removing service file..."
+    sudo rm -f "$SERVICE_FILE"
+
+    info "Reloading systemd..."
+    sudo systemctl daemon-reload
+
+    echo ""
+    success "Auto-start service removed"
+    info "Containers are still running. To stop: ./start --stop"
+    success "Log saved to $LOG_FILE"
+    ;;
+
+# --- MQTT password management ---
+--mqtt-passwd)
+    require_docker
+    MQTT_USER="${2:-}"
+    if [ -z "$MQTT_USER" ]; then
+        error "Usage: ./start --mqtt-passwd <username>"
+        exit 1
+    fi
+    PASSWD_FILE="/mosquitto/config/passwd"
+    if docker compose exec mosquitto test -f "$PASSWD_FILE" 2>/dev/null; then
+        step "Adding/updating MQTT user: $MQTT_USER"
+        docker compose exec -it mosquitto mosquitto_passwd "$PASSWD_FILE" "$MQTT_USER"
+    else
+        step "Creating MQTT password file with first user: $MQTT_USER"
+        docker compose exec -it mosquitto mosquitto_passwd -c "$PASSWD_FILE" "$MQTT_USER"
+    fi
+    success "MQTT password updated for $MQTT_USER"
+    info "Add to mosquitto/mosquitto.conf:"
+    info "  allow_anonymous false"
+    info "  password_file $PASSWD_FILE"
+    info "Then run: ./start --restart"
+    ;;
+
+# --- Database size ---
+--db-size)
+    require_docker
+    step "History database size"
+    docker compose exec bridge ls -lh /data/history.db
+    ;;
+
+# --- Database compact ---
+--db-compact)
+    require_docker
+    step "Compacting history database (VACUUM)"
+    docker compose exec bridge python3 -c "
+import sqlite3
+conn = sqlite3.connect('/data/history.db')
+conn.execute('VACUUM')
+conn.close()
+print('Database compacted successfully')
+"
+    success "Database compacted"
+    ;;
+
+# --- Check container time ---
+--check-time)
+    require_docker
+    step "Bridge container date/time"
+    docker compose exec bridge date
+    ;;
+
+*)
+    error "Unknown command: $CMD"
+    info "Run ./start --help for usage"
+    exit 1
+    ;;
+esac
