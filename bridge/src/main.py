@@ -1538,6 +1538,13 @@ class BridgeManager:
         identity = poller._identity
         device_name = identity.name if identity else "PDU"
         model = identity.model if identity else ""
+        serial = identity.serial if identity else ""
+        fw_parts = []
+        if identity and identity.firmware_main:
+            fw_parts.append(identity.firmware_main)
+        if identity and identity.firmware_secondary:
+            fw_parts.append(identity.firmware_secondary)
+        firmware = " / ".join(fw_parts)
         reports_dir = self.config.reports_dir
 
         try:
@@ -1554,6 +1561,7 @@ class BridgeManager:
                 return generate_weekly_report(
                     self.history, poller.device_id, device_name, model,
                     week_start=week_start, reports_dir=reports_dir,
+                    serial=serial, firmware=firmware,
                 )
             elif report_type == "monthly":
                 if month is None:
@@ -1567,6 +1575,7 @@ class BridgeManager:
                 return generate_monthly_report(
                     self.history, poller.device_id, device_name, model,
                     month=month, reports_dir=reports_dir,
+                    serial=serial, firmware=firmware,
                 )
         except Exception:
             logger.exception(

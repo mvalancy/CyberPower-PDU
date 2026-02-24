@@ -259,7 +259,6 @@ class TestCyberPDFReport:
         )
         pdf.alias_nb_pages()
         pdf.add_page()
-        pdf._dark_page()
 
         # Section title
         pdf.section_title("Test Section")

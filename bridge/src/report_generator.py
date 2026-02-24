@@ -42,13 +42,16 @@ class CyberPDFReport(FPDF):
     """Dark-themed PDF report matching the web UI cyberpunk style."""
 
     def __init__(self, title: str = "", device_name: str = "",
-                 model: str = "", period: str = "", device_id: str = ""):
+                 model: str = "", period: str = "", device_id: str = "",
+                 serial: str = "", firmware: str = ""):
         super().__init__(orientation="P", unit="mm", format="A4")
         self._title = title
         self._device_name = device_name
         self._model = model
         self._period = period
         self._device_id = device_id
+        self._serial = serial
+        self._firmware = firmware
         self._fonts_loaded = False
         self._load_fonts()
         self.set_auto_page_break(auto=True, margin=20)
@@ -78,40 +81,65 @@ class CyberPDFReport(FPDF):
             self.set_font(fallback, style, size)
 
     def header(self):
-        # Dark header band
+        # Full-page dark background (must be first so header text draws on top)
         self.set_fill_color(*COLOR_BG)
-        self.rect(0, 0, 210, 40, "F")
+        self.rect(0, 0, 210, 297, "F")
+
+        # Dark header band
+        self.set_fill_color(*COLOR_SURFACE)
+        self.rect(0, 0, 210, 32, "F")
 
         # Cyan accent line
         self.set_fill_color(*COLOR_CYAN)
-        self.rect(0, 40, 210, 0.8, "F")
+        self.rect(0, 32, 210, 0.6, "F")
 
-        # Title
-        self._font("Inter", "B", 16)
+        # Title (left-aligned)
+        self._font("Inter", "B", 13)
         self.set_text_color(*COLOR_CYAN)
-        self.set_y(8)
-        self.cell(0, 8, "CYBERPOWER PDU ENERGY REPORT", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.set_xy(10, 4)
+        self.cell(120, 6, "CYBERPOWER PDU ENERGY REPORT", new_x="LEFT", new_y="NEXT")
 
-        # Subtitle: device info + period
-        self._font("Inter", "", 9)
+        # Copyright (right-aligned, same line as title)
+        self._font("Inter", "", 7)
         self.set_text_color(*COLOR_DIM)
-        parts = []
+        self.set_xy(130, 5)
+        self.cell(70, 4, "Created by Matthew Valancy", align="R")
+        self.set_xy(130, 9)
+        self.cell(70, 4, "Valpatel Software LLC  \u00a9 2026", align="R")
+
+        # Device info line
+        self._font("JetBrainsMono", "", 7)
+        self.set_text_color(*COLOR_TEXT)
+        self.set_xy(10, 13)
+        info_parts = []
         if self._device_name:
-            parts.append(self._device_name)
+            info_parts.append(self._device_name)
         if self._model:
-            parts.append(self._model)
+            info_parts.append(self._model)
+        if self._serial:
+            info_parts.append(f"S/N: {self._serial}")
+        if self._firmware:
+            info_parts.append(f"FW: {self._firmware}")
         if self._device_id:
-            parts.append(f"ID: {self._device_id}")
-        subtitle = " | ".join(parts)
-        self.cell(0, 5, subtitle, align="C", new_x="LMARGIN", new_y="NEXT")
+            info_parts.append(f"ID: {self._device_id}")
+        self.cell(190, 4, "  |  ".join(info_parts), new_x="LMARGIN", new_y="NEXT")
 
         # Period + generation date
-        self.set_text_color(*COLOR_TEXT)
-        self._font("Inter", "", 9)
-        period_line = f"Period: {self._period}  |  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        self.cell(0, 5, period_line, align="C", new_x="LMARGIN", new_y="NEXT")
+        self._font("Inter", "", 8)
+        self.set_text_color(*COLOR_DIM)
+        self.set_xy(10, 19)
+        period_line = f"Period: {self._period}"
+        self.cell(100, 4, period_line)
+        self.set_xy(110, 19)
+        self.cell(90, 4, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", align="R")
 
-        self.set_y(44)
+        # Software version
+        self._font("Inter", "", 6)
+        self.set_text_color(60, 65, 80)
+        self.set_xy(10, 25)
+        self.cell(190, 4, "CyberPower PDU Bridge  |  github.com/mvalancy/CyberPower-PDU", align="C")
+
+        self.set_y(34)
 
     def footer(self):
         self.set_y(-15)
@@ -122,11 +150,6 @@ class CyberPDFReport(FPDF):
         self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
         self.set_x(10)
         self.cell(0, 10, "Valpatel Software LLC", align="L")
-
-    def _dark_page(self):
-        """Fill the current page with the dark background."""
-        self.set_fill_color(*COLOR_BG)
-        self.rect(0, 0, 210, 297, "F")
 
     def section_title(self, title: str):
         """Render a cyan uppercase section heading with underline."""
@@ -327,6 +350,8 @@ def generate_weekly_report(
     model: str = "",
     week_start: str | None = None,
     reports_dir: str | None = None,
+    serial: str = "",
+    firmware: str = "",
 ) -> str | None:
     """Generate a weekly energy PDF report.
 
@@ -337,6 +362,8 @@ def generate_weekly_report(
         model: PDU model string
         week_start: Monday date as YYYY-MM-DD (default: previous week)
         reports_dir: Output directory (default: REPORTS_DIR)
+        serial: PDU serial number
+        firmware: PDU firmware version string
 
     Returns:
         Path to generated PDF, or None if no data.
@@ -394,10 +421,11 @@ def generate_weekly_report(
         model=model,
         period=period,
         device_id=device_id,
+        serial=serial,
+        firmware=firmware,
     )
     pdf.alias_nb_pages()
     pdf.add_page()
-    pdf._dark_page()
 
     # --- Summary Cards ---
     pdf.section_title("Energy Summary")
@@ -493,6 +521,8 @@ def generate_monthly_report(
     model: str = "",
     month: str | None = None,
     reports_dir: str | None = None,
+    serial: str = "",
+    firmware: str = "",
 ) -> str | None:
     """Generate a monthly energy PDF report.
 
@@ -503,6 +533,8 @@ def generate_monthly_report(
         model: PDU model string
         month: Month as YYYY-MM (default: previous month)
         reports_dir: Output directory (default: REPORTS_DIR)
+        serial: PDU serial number
+        firmware: PDU firmware version string
 
     Returns:
         Path to generated PDF, or None if no data.
@@ -565,10 +597,11 @@ def generate_monthly_report(
         model=model,
         period=period,
         device_id=device_id,
+        serial=serial,
+        firmware=firmware,
     )
     pdf.alias_nb_pages()
     pdf.add_page()
-    pdf._dark_page()
 
     # --- Summary Cards ---
     pdf.section_title("Energy Summary")
