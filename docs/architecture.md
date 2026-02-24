@@ -168,7 +168,8 @@ sequenceDiagram
     Note over SQLite: Commits batched every<br/>10 writes for I/O efficiency
 
     loop Every hour
-        Bridge->>SQLite: Generate PDF reports (if needed)
+        Bridge->>SQLite: Query energy rollups for PDF reports
+        Note right of Bridge: PDF saved to /data/reports/
         Bridge->>SQLite: Cleanup old data (>60 days)
     end
 ```
@@ -305,7 +306,7 @@ Libraries used: `pysnmp-lextudio` (SNMP), `pyserial` (serial), `paho-mqtt` (MQTT
 
 The bridge stores every poll sample (1Hz) directly to a local SQLite database using WAL mode for concurrent reads. This provides self-contained historical data without requiring InfluxDB or any external database.
 
-The database has three tables, shown in the entity-relationship diagram below:
+The database has the following tables, shown in the entity-relationship diagram below:
 
 ```mermaid
 erDiagram
@@ -349,12 +350,21 @@ erDiagram
         real avg_power_w "Average power"
         integer days "Days aggregated"
     }
+
+    environment_samples {
+        integer ts "Unix timestamp"
+        real temperature "Temperature reading"
+        real humidity "Humidity percentage"
+        integer contact_1 "Contact closure 1-4"
+        text device_id "PDU identifier"
+    }
 ```
 
 - **bank_samples** -- One row per bank per second. Stores voltage, current, active power, apparent power, and power factor for each of the two banks.
 - **outlet_samples** -- One row per outlet per second. Stores the outlet state (on/off), current, power, and cumulative energy (kWh).
 - **energy_daily** -- Daily energy rollups computed from 1Hz data. Broken down by source and outlet. Never purged by cleanup.
 - **energy_monthly** -- Monthly aggregations from daily rollups. Recomputed for current and previous month. Never purged by cleanup.
+- **environment_samples** -- One row per poll when an environmental sensor is present. Temperature, humidity, and contact closures.
 - PDF energy reports are generated from these rollup tables and stored as files in the reports directory (`/data/reports`).
 
 ### Storage and Downsampling

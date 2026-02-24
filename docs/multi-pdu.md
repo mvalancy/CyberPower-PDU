@@ -108,6 +108,11 @@ Create a `pdus.json` file to configure your PDUs. The file is stored at the path
 | `label` | No | `""` | Human-friendly display name for the web UI |
 | `enabled` | No | `true` | Set to `false` to skip this PDU without removing it from the file |
 | `num_banks` | No | `2` | Default bank count hint (auto-detected from SNMP at startup) |
+| `serial_port` | No | `""` | Serial device path (e.g., `/dev/ttyUSB0`) for management access |
+| `serial_baud` | No | `9600` | Serial baud rate |
+| `serial_username` | No | `"cyber"` | Serial console login username |
+| `serial_password` | No | `"cyber"` | Serial console login password |
+| `transport` | No | `"snmp"` | Primary transport: `"snmp"`, `"serial"`, or `"both"` |
 
 ### Configuration priority
 

@@ -5,7 +5,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed.svg?logo=docker&logoColor=white)](docker-compose.yml)
 [![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-660066.svg?logo=eclipsemosquitto&logoColor=white)](docs/mqtt-topics.md)
 [![Home Assistant](https://img.shields.io/badge/Home_Assistant-Discovery-41bdf5.svg?logo=homeassistant&logoColor=white)](docs/configuration.md)
-[![Tests: 942](https://img.shields.io/badge/Tests-942_passing-05ffa1.svg)](#)
+[![Tests: 996](https://img.shields.io/badge/Tests-996_passing-05ffa1.svg)](#)
 
 A self-hosted SNMP + Serial to MQTT bridge for CyberPower PDUs — including ATS dual-source models — with a real-time web dashboard, device management, historical charts, automation rules, and Home Assistant integration.
 

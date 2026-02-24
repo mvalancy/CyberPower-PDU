@@ -20,7 +20,7 @@ These settings tell the bridge how to reach your PDU over SNMP. In single-PDU mo
 | `PDU_SNMP_PORT` | `161` | SNMP port (almost always 161) |
 | `PDU_COMMUNITY_READ` | `public` | SNMP v2c community string for read (GET) operations |
 | `PDU_COMMUNITY_WRITE` | `private` | SNMP v2c community string for write (SET) operations -- used for outlet control |
-| `PDU_DEVICE_ID` | `pdu44001` | Unique identifier used in MQTT topics (`pdu/{device_id}/...`) and the web UI. Must not contain `/ # + ` or spaces. |
+| `PDU_DEVICE_ID` | *(empty)* | Unique identifier used in MQTT topics (`pdu/{device_id}/...`) and the web UI. Auto-assigned as `pdu-01`, `pdu-02`, etc. if left empty. Must not contain `/ # + ` or spaces. |
 
 **Example:**
 
@@ -42,15 +42,16 @@ These settings enable RS-232 serial console access for full PDU management (thre
 |----------|---------|-------------|
 | `PDU_SERIAL_PORT` | *(empty)* | Serial device path (e.g., `/dev/ttyUSB0`). Leave empty to disable serial. |
 | `PDU_SERIAL_BAUD` | `9600` | Serial baud rate |
-| `PDU_SERIAL_USERNAME` | `admin` | Serial console login username |
-| `PDU_SERIAL_PASSWORD` | `cyber` | Serial console login password |
+| `PDU_SERIAL_USERNAME` | `cyber` | Serial console login username (CyberPower factory default is `cyber`) |
+| `PDU_SERIAL_PASSWORD` | `cyber` | Serial console login password (CyberPower factory default is `cyber`) |
+| `PDU_TRANSPORT` | `snmp` | Primary transport: `snmp`, `serial`, or `both` |
 
 **Example:**
 
 ```ini
 PDU_SERIAL_PORT=/dev/ttyUSB0
 PDU_SERIAL_BAUD=9600
-PDU_SERIAL_USERNAME=admin
+PDU_SERIAL_USERNAME=cyber
 PDU_SERIAL_PASSWORD=mypassword
 ```
 
@@ -64,7 +65,7 @@ These control how the bridge connects to the MQTT broker (Mosquitto).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MQTT_BROKER` | `mosquitto` | Hostname or IP of the MQTT broker. When running in Docker, this is `mosquitto` (the container name). If the bridge uses `network_mode: host`, set this to `127.0.0.1`. |
+| `MQTT_BROKER` | `127.0.0.1` | Hostname or IP of the MQTT broker. The Docker Compose file overrides this to `127.0.0.1` because the bridge uses `network_mode: host`. The `.env` value is only used when running the bridge outside Docker. |
 | `MQTT_PORT` | `1883` | MQTT broker port |
 | `MQTT_USERNAME` | *(empty)* | Username for MQTT authentication. Leave empty for anonymous access. |
 | `MQTT_PASSWORD` | *(empty)* | Password for MQTT authentication. Leave empty for anonymous access. |
@@ -105,6 +106,11 @@ These control how the bridge itself behaves.
 | `BRIDGE_PDUS_FILE` | `/data/pdus.json` | file path | Path to the multi-PDU configuration file (inside the container). |
 | `BRIDGE_OUTLET_NAMES_FILE` | `/data/outlet_names.json` | file path | Path to custom outlet name overrides (inside the container). |
 | `BRIDGE_WEB_PASSWORD` | *(empty)* | string | Set to enable web UI authentication. When set, all API endpoints require a session token. |
+| `BRIDGE_WEB_USERNAME` | `admin` | string | Username for web UI login (only used when `BRIDGE_WEB_PASSWORD` is set). |
+| `BRIDGE_SESSION_SECRET` | *(auto-generated)* | string | Secret key for session tokens. Auto-generated if empty. Set explicitly for consistent sessions across restarts. |
+| `BRIDGE_SESSION_TIMEOUT` | `86400` | 60 - 604800 | Session token lifetime in seconds (default: 24 hours). |
+| `BRIDGE_RECOVERY_ENABLED` | `true` | `true`/`false` | Enable DHCP resilience -- auto-recover via subnet scan when the PDU changes IP. |
+| `BRIDGE_SETTINGS_FILE` | `/data/bridge_settings.json` | file path | Path to persisted runtime settings (inside the container). |
 
 ---
 

@@ -623,6 +623,26 @@ Event types: `triggered`, `restored`, `created`, `updated`, `deleted`.
 
 ---
 
+### PUT /api/rules/{name}/toggle
+
+Enable or disable an automation rule without deleting it.
+
+**Query parameters:** `device_id` (optional)
+
+**Request body:**
+
+```json
+{
+  "enabled": false
+}
+```
+
+**Response (200):** The updated rule object.
+
+**Error: 404** if rule not found.
+
+---
+
 ## History Endpoints
 
 All history endpoints support time range filtering and automatic downsampling.
@@ -715,6 +735,92 @@ Same data as `/api/history/outlets`, returned as a CSV file download.
 **Headers:** `Content-Disposition: attachment; filename="outlet_history.csv"`
 
 **Columns:** `bucket, outlet, current, power, energy`
+
+---
+
+## Energy Endpoints
+
+These endpoints serve daily and monthly energy rollup data for energy tracking and bill splitting.
+
+### GET /api/energy/daily
+
+Query daily energy rollups.
+
+**Query parameters:** `device_id` (optional), `start` (YYYY-MM-DD), `end` (YYYY-MM-DD)
+
+**Response (200):**
+
+```json
+[
+  {
+    "date": "2026-02-16",
+    "device_id": "pdu44001",
+    "source": null,
+    "outlet": null,
+    "kwh": 2.912,
+    "peak_power_w": 280,
+    "avg_power_w": 121,
+    "samples": 86400
+  }
+]
+```
+
+Rows with `source=null, outlet=null` are daily totals. Rows with `source=1` or `source=2` break down by power source. Rows with `outlet=N` break down by outlet.
+
+---
+
+### GET /api/energy/monthly
+
+Query monthly energy rollups.
+
+**Query parameters:** `device_id` (optional), `start` (YYYY-MM), `end` (YYYY-MM)
+
+**Response (200):**
+
+```json
+[
+  {
+    "month": "2026-01",
+    "device_id": "pdu44001",
+    "source": null,
+    "outlet": null,
+    "kwh": 85.4,
+    "peak_power_w": 310,
+    "avg_power_w": 115,
+    "days": 31
+  }
+]
+```
+
+---
+
+### GET /api/energy/summary
+
+Get an energy usage summary combining live and historical data.
+
+**Query parameters:** `device_id` (optional)
+
+**Response (200):**
+
+```json
+{
+  "today_kwh": 1.23,
+  "week_kwh": 8.5,
+  "month_kwh": 45.2,
+  "source_a_kwh": 28.1,
+  "source_b_kwh": 17.1
+}
+```
+
+---
+
+### GET /api/energy/daily.csv
+
+Same data as `/api/energy/daily`, returned as a CSV file download.
+
+### GET /api/energy/monthly.csv
+
+Same data as `/api/energy/monthly`, returned as a CSV file download.
 
 ---
 
@@ -1109,19 +1215,65 @@ Update EnergyWise configuration.
 
 ---
 
-### PUT /api/rules/{name}/toggle
+## Connection Testing Endpoints
 
-Enable or disable an automation rule.
+### POST /api/pdus/test-connection
+
+Test SNMP connectivity to a PDU without adding it to the configuration.
 
 **Request body:**
 
 ```json
 {
-  "enabled": false
+  "host": "192.168.20.177",
+  "snmp_port": 161,
+  "community_read": "public"
 }
 ```
 
-**Response (200):** The updated rule object.
+**Response (200):**
+
+```json
+{
+  "ok": true,
+  "identity": {
+    "model": "PDU44001",
+    "serial": "ABC123",
+    "name": "CyberPower PDU"
+  }
+}
+```
+
+**Error: 503** if test callback is not configured.
+
+---
+
+### POST /api/pdus/test-serial
+
+Test serial connectivity to a PDU.
+
+**Request body:**
+
+```json
+{
+  "port": "/dev/ttyUSB0",
+  "baud": 9600,
+  "username": "cyber",
+  "password": "cyber"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "ok": true,
+  "identity": {
+    "model": "PDU44001",
+    "name": "CyberPower PDU"
+  }
+}
+```
 
 ---
 
@@ -1149,23 +1301,77 @@ Check if the current session is authenticated.
 
 ### GET /api/stream
 
-Server-Sent Events (SSE) stream for real-time updates.
+Server-Sent Events (SSE) stream for real-time dashboard updates. The bridge pushes a JSON event every poll cycle with the full PDU status. Connect from JavaScript with `new EventSource('/api/stream')`.
+
+**Response:** `text/event-stream` with `data: {...}` JSON payloads.
+
+---
 
 ### GET /api/system/info
 
-System information (version, uptime, Python version).
+System information including uptime, PDU count, and Python version.
+
+**Response (200):**
+
+```json
+{
+  "uptime_seconds": 3600.5,
+  "pdu_count": 1,
+  "python_version": "3.12.3",
+  "restart_required": false
+}
+```
+
+---
+
+### GET /api/system/logs
+
+Query bridge log entries from the in-memory ring buffer.
+
+**Query parameters:**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `level` | Minimum log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+| `search` | Text search filter (case-insensitive) | *(none)* |
+| `limit` | Max entries to return | `200` |
+
+**Response (200):**
+
+```json
+{
+  "logs": [
+    {"ts": "2026-02-23 10:00:01", "level": "INFO", "message": "[pdu44001] Poll #1: voltage=120.4V"}
+  ],
+  "count": 1
+}
+```
+
+---
 
 ### POST /api/system/restart
 
-Restart the bridge process.
+Restart the bridge process. Returns immediately; the process exits after a short delay.
+
+**Response (200):** `{"ok": true}`
+
+---
 
 ### GET /api/system/backup
 
-Download a backup of all bridge data (rules, outlet names, PDU config).
+Download a JSON backup of all bridge configuration (rules, outlet names, PDU config, settings).
+
+**Response (200):** JSON file with `Content-Disposition: attachment` header.
+
+---
 
 ### POST /api/system/restore
 
-Restore from a backup file (multipart upload).
+Restore bridge configuration from a backup JSON file. Sets `restart_required` flag.
+
+**Request body:** JSON object with filenames as keys and file contents as values.
+
+**Response (200):** `{"ok": true, "restored": ["rules.json", "outlet_names.json"]}`
 
 ---
 
