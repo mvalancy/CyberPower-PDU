@@ -32,12 +32,20 @@ nano .env            # Set PDU_HOST to your PDU's IP (or BRIDGE_MOCK_MODE=true)
 <td><a href="docs/features.md#authentication"><img src="docs/screenshots/login.png" width="400" alt="Login"/></a><br/><sub>Optional web authentication</sub></td>
 </tr>
 <tr>
-<td><a href="docs/features.md#settings--configuration"><img src="docs/screenshots/settings-pdus.png" width="400" alt="Settings"/></a><br/><sub>Multi-PDU configuration</sub></td>
-<td><a href="docs/features.md#pdu-management"><img src="docs/screenshots/settings-manage.png" width="400" alt="Management"/></a><br/><sub>Full device management</sub></td>
+<td><a href="docs/features.md#settings--configuration"><img src="docs/screenshots/settings-pdus.png" width="400" alt="Settings — PDUs"/></a><br/><sub>PDU configuration (SNMP, serial, transport)</sub></td>
+<td><a href="docs/features.md#settings--configuration"><img src="docs/screenshots/settings-general.png" width="400" alt="Settings — General"/></a><br/><sub>Polling, MQTT, auth, backup & restore</sub></td>
 </tr>
 <tr>
+<td><a href="docs/features.md#settings--configuration"><img src="docs/screenshots/settings-rename.png" width="400" alt="Settings — Rename"/></a><br/><sub>Device rename & source labels</sub></td>
+<td><a href="docs/features.md#pdu-management"><img src="docs/screenshots/settings-manage.png" width="400" alt="Settings — Manage"/></a><br/><sub>Security, network, thresholds, ATS, notifications</sub></td>
+</tr>
+<tr>
+<td><a href="docs/features.md#pdu-management"><img src="docs/screenshots/settings-logs.png" width="400" alt="Settings — Logs"/></a><br/><sub>Live bridge logs with filtering</sub></td>
 <td><a href="docs/features.md#historical-data--charts"><img src="docs/screenshots/charts.png" width="400" alt="Charts"/></a><br/><sub>Historical power, voltage, current</sub></td>
+</tr>
+<tr>
 <td><a href="docs/features.md#help"><img src="docs/screenshots/help.png" width="400" alt="Help"/></a><br/><sub>In-app help & troubleshooting</sub></td>
+<td></td>
 </tr>
 </table>
 

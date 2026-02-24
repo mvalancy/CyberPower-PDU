@@ -3,7 +3,7 @@
  *
  * Run:  cd tests/e2e && npx playwright test capture-screenshots.spec.ts
  *
- * Captures 12 screenshots covering the dashboard, settings panels,
+ * Captures 13 screenshots covering the dashboard, settings panels,
  * login overlay, help modal, and key feature sections.
  *
  * By default uses the webServer from playwright.config.ts (mock mode).
@@ -50,7 +50,9 @@ test.describe('Screenshot Capture', () => {
       if (overlay) overlay.style.display = 'flex';
     });
     await page.waitForTimeout(300);
-    await page.screenshot({ path: shot('login.png'), fullPage: false });
+    // Screenshot just the login card (the inner div), not the full-page overlay
+    const loginCard = page.locator('#login-overlay > div');
+    await loginCard.screenshot({ path: shot('login.png') });
     // Hide it so it doesn't interfere if the page context is reused
     await page.evaluate(() => {
       const overlay = document.getElementById('login-overlay');
@@ -93,10 +95,17 @@ test.describe('Screenshot Capture', () => {
     await section.screenshot({ path: shot('automation.png') });
   });
 
-  test('settings — PDUs tab', async ({ page }) => {
+  test('settings — PDUs tab (edit open)', async ({ page }) => {
     await loadDashboard(page);
     await openSettings(page);
     await page.waitForTimeout(300);
+    // Click Edit on the first PDU card to show the config form
+    const editBtn = page.locator('.pdu-card-btn', { hasText: 'Edit' }).first();
+    if (await editBtn.isVisible()) {
+      await editBtn.click();
+      await page.locator('.pdu-card-edit').first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
     await page.locator('#settings-panel').screenshot({ path: shot('settings-pdus.png') });
   });
 
@@ -123,6 +132,16 @@ test.describe('Screenshot Capture', () => {
     await switchToTab(page, 'tab-rename');
     await page.waitForTimeout(300);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-rename.png') });
+  });
+
+  test('settings — Logs tab', async ({ page }) => {
+    await loadDashboard(page);
+    await openSettings(page);
+    await switchToTab(page, 'tab-logs');
+    // Wait for log viewer to load content
+    await page.locator('#log-viewer').waitFor({ timeout: 5000 });
+    await page.waitForTimeout(1000);
+    await page.locator('#settings-panel').screenshot({ path: shot('settings-logs.png') });
   });
 
   test('help modal', async ({ page }) => {

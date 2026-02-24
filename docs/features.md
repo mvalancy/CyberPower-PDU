@@ -85,6 +85,15 @@ A visual walkthrough of every feature in the CyberPower PDU Bridge.
 - **Event log** — Searchable PDU event log viewer with severity levels
 - Transport badge shows connection type (SNMP Only / Serial / SNMP+Serial)
 
+## Bridge Logs
+
+![Logs](screenshots/settings-logs.png)
+
+- Live log viewer with auto-refresh
+- Filter by level: ERROR, WARNING, INFO, DEBUG
+- Full-text search across log entries
+- Accessible from the Logs tab in Settings
+
 ## Authentication
 
 ![Login](screenshots/login.png)
