@@ -21,6 +21,7 @@ Steps:
   4. Writes pdus.json configuration
   5. Prints next steps to get running"
 
+setup_log "wizard"
 banner
 
 # Try running via Docker first, fall back to native Python
@@ -31,7 +32,7 @@ elif python3 -c "import pysnmp" 2>/dev/null; then
     step "Starting setup wizard (native Python)"
     python3 -m bridge.src.setup_wizard
 else
-    error "Cannot run wizard — either start the Docker stack (./run) or install pysnmp-lextudio"
+    error "Cannot run wizard — either start the stack (./start) or install pysnmp-lextudio"
     info "  pip install pysnmp-lextudio"
     exit 1
 fi

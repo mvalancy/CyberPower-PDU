@@ -13,8 +13,10 @@ check_help "${1:-}" "./setup" "Prepare the Docker stack for deployment" \
 
 Checks for Docker, creates .env from template if missing,
 pulls container images, and builds the bridge container.
-Run ./run afterward to start the stack."
 
+Run ./start afterward to start the stack."
+
+setup_log "setup"
 banner
 step "Setting up CyberPower PDU Bridge"
 
@@ -52,4 +54,6 @@ docker compose build
 
 echo ""
 success "Setup complete"
-info "Review .env, then run: ./run"
+success "Log saved to $LOG_FILE"
+echo ""
+info "Next step: review .env, then run ./start"

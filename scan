@@ -24,6 +24,7 @@ Examples:
   ./scan --subnet 192.168.20.0/24
   ./scan --subnet 10.0.0.0/24 --community private"
 
+setup_log "scan"
 banner
 
 # Parse arguments
@@ -52,7 +53,10 @@ elif python3 -c "import pysnmp" 2>/dev/null; then
     [ -n "$SUBNET" ] && ARGS="$ARGS --subnet $SUBNET"
     python3 -m bridge.src.discovery $ARGS
 else
-    error "Cannot run scan — either start the Docker stack (./run) or install pysnmp-lextudio"
+    error "Cannot run scan — either start the stack (./start) or install pysnmp-lextudio"
     info "  pip install pysnmp-lextudio"
     exit 1
 fi
+
+echo ""
+success "Log saved to $LOG_FILE"

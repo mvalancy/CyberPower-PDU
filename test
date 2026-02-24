@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 source lib/common.sh
 
 check_help "${1:-}" "./test" "Run tests against the PDU bridge" \
-"Usage: ./test [--unit|--real|--mock|--hardware|--snmpwalk|--e2e|--e2e-mock|--e2e-hw]
+"Usage: ./test [mode]
 
 Modes:
   --unit      Run pytest unit tests with branded HTML report (default)
@@ -20,8 +20,15 @@ Modes:
               Walks ePDU, ePDU2, and standard MIB-II trees
   --e2e       Run Playwright browser E2E tests against running bridge
   --e2e-mock  Auto-start bridge in mock mode, run all non-hardware E2E tests
-  --e2e-hw    Run Playwright hardware E2E tests (needs HW_TEST=true)"
+  --e2e-hw    Run Playwright hardware E2E tests (needs HW_TEST=true)
 
+Examples:
+  ./test                              Run unit tests
+  ./test --hardware                   Run hardware validation (PDU_HOST in .env)
+  PDU_HOST=192.168.20.177 ./test --real  Test against a specific PDU
+  ./test --e2e-mock                   Run browser tests with mock data"
+
+setup_log "test"
 banner
 
 source .env 2>/dev/null || true
@@ -43,6 +50,8 @@ summary() {
     else
         error "Results: $PASS passed, $FAIL failed"
     fi
+    echo ""
+    success "Log saved to $LOG_FILE"
     [ "$FAIL" -eq 0 ] && exit 0 || exit 1
 }
 
@@ -60,6 +69,7 @@ case "$MODE" in
         if [ -f reports/test-report.html ]; then
             success "Report: reports/test-report.html"
         fi
+        success "Log saved to $LOG_FILE"
         exit 0
         ;;
 
@@ -79,6 +89,7 @@ case "$MODE" in
         if [ -f reports/hardware-validation.html ]; then
             success "Report: reports/hardware-validation.html"
         fi
+        success "Log saved to $LOG_FILE"
         exit 0
         ;;
 
@@ -89,8 +100,7 @@ case "$MODE" in
         OUTFILE="snmpwalk-$(date +%Y%m%d-%H%M%S).txt"
 
         if ! command -v snmpwalk &>/dev/null; then
-            error "snmpwalk not installed. Install snmp tools:"
-            info "  sudo apt install snmp snmp-mibs-downloader"
+            error "snmpwalk not installed. Run ./bootstrap to install snmp tools."
             exit 1
         fi
 
@@ -116,6 +126,7 @@ case "$MODE" in
 
         echo ""
         success "Saved to $OUTFILE ($(wc -l < "$OUTFILE") lines)"
+        success "Log saved to $LOG_FILE"
         ;;
 
     --e2e)
@@ -251,8 +262,7 @@ case "$MODE" in
                 fail "Cannot read input voltage"
             fi
         else
-            warn "snmpget not installed, skipping direct SNMP tests"
-            info "Install: sudo apt install snmp"
+            warn "snmpget not installed — run ./bootstrap to install snmp tools"
         fi
 
         # Check if stack is running
@@ -270,7 +280,7 @@ case "$MODE" in
                 fail "No MQTT messages (is bridge running?)"
             fi
         else
-            warn "Stack not running. Start with: ./run"
+            warn "Stack not running. Start with: ./start"
         fi
 
         summary
@@ -278,7 +288,7 @@ case "$MODE" in
 
     *)
         error "Unknown mode: $MODE"
-        info "Usage: ./test [--unit|--real|--mock|--hardware|--snmpwalk|--e2e|--e2e-mock|--e2e-hw]"
+        info "Run ./test --help for usage"
         exit 1
         ;;
 esac

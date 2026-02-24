@@ -5,6 +5,9 @@
 
 # Shared shell library — sourced by all scripts.
 
+# --- Project root (resolved from lib/ location) ---
+_PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # --- Colors (auto-disabled when not a TTY) ---
 if [ -t 1 ]; then
     _RED='\033[0;31m'
@@ -23,6 +26,25 @@ success() { echo -e "${_GREEN}[ok]${_RESET}    $*"; }
 warn()    { echo -e "${_YELLOW}[warn]${_RESET}  $*"; }
 error()   { echo -e "${_RED}[error]${_RESET} $*"; }
 step()    { echo -e "${_CYAN}${_BOLD}==> $*${_RESET}"; }
+
+# --- Logging ---
+# Tees all stdout+stderr to logs/<name>-<timestamp>.log.
+# Call once at the top of each script: setup_log "start"
+# The log file path is stored in LOG_FILE.
+setup_log() {
+    local name="$1"
+    local log_dir="$_PROJECT_DIR/logs"
+    mkdir -p "$log_dir"
+    LOG_FILE="${log_dir}/${name}-$(date +%Y%m%d-%H%M%S).log"
+    # Tee all output to log file (append) while still showing on terminal
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    # Clean old logs — keep the 20 most recent per script
+    local old_logs
+    old_logs=$(ls -t "${log_dir}/${name}-"*.log 2>/dev/null | tail -n +21)
+    if [ -n "$old_logs" ]; then
+        echo "$old_logs" | xargs rm -f
+    fi
+}
 
 # --- Banner ---
 banner() {

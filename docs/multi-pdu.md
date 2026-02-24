@@ -219,7 +219,7 @@ curl -X POST http://localhost:8080/api/pdus/discover
 
 Changes made through the API are persisted to `pdus.json` automatically.
 
-> **Note:** Adding or removing PDUs through the API updates the configuration file, but new pollers are not started until the bridge is restarted. To start polling a newly added PDU, restart the bridge: `docker compose restart bridge`.
+> **Note:** Adding or removing PDUs through the API updates the configuration file, but new pollers are not started until the bridge is restarted. To start polling a newly added PDU, restart the bridge: `./start --restart`.
 
 ---
 

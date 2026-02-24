@@ -13,8 +13,16 @@ check_help "${1:-}" "./bootstrap" "Install system dependencies for development a
 
 Installs Docker, mosquitto-clients, SNMP tools, Python test
 dependencies, and serial port access. Requires sudo. Run once
-on a fresh machine."
+on a fresh machine.
 
+What it installs:
+  - Docker and docker compose plugin
+  - mosquitto-clients (MQTT testing)
+  - snmp tools (SNMP testing)
+  - Python packages (pytest, pysnmp, paho-mqtt, pyserial, etc.)
+  - dialout group membership (serial port access)"
+
+setup_log "bootstrap"
 banner
 step "Installing system dependencies"
 
@@ -75,6 +83,7 @@ pip install --user --break-system-packages pytest pytest-asyncio pysnmp-lextudio
 
 echo ""
 success "All dependencies installed"
+success "Log saved to $LOG_FILE"
 
 # Check if we need a new shell for group changes
 _needs_relogin=false
@@ -88,3 +97,6 @@ if [ "$_needs_relogin" = true ]; then
     echo ""
     warn "Log out and back in (or run 'newgrp docker && newgrp dialout') for Docker and serial port access."
 fi
+
+echo ""
+info "Next step: ./setup"

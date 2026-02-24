@@ -5,7 +5,7 @@
 All bridge configuration is done through environment variables in the `.env` file at the project root. Copy `.env.example` to `.env` and edit it. After changing any setting, rebuild and restart the bridge:
 
 ```bash
-docker compose up -d --build
+./start --rebuild
 ```
 
 ---

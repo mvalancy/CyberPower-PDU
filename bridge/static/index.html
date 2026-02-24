@@ -1519,10 +1519,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
           <span class="help-section-arrow">&#9654;</span>
         </div>
         <div class="help-section-content">
-          <p><strong>Red API dot (disconnected)</strong> &mdash; The browser cannot reach the bridge web server. Check that the Docker container is running: <code>docker compose ps</code>. Verify port 8080 is not blocked.</p>
-          <p><strong>Red MQTT dot</strong> &mdash; The bridge cannot connect to the Mosquitto broker. Check <code>docker compose logs mosquitto</code>. Ensure <code>MQTT_HOST</code> in <code>.env</code> matches the broker address.</p>
+          <p><strong>Red API dot (disconnected)</strong> &mdash; The browser cannot reach the bridge web server. Check that the container is running: <code>./start --status</code>. Verify port 8080 is not blocked.</p>
+          <p><strong>Red MQTT dot</strong> &mdash; The bridge cannot connect to the Mosquitto broker. Check <code>./start --logs</code>. Ensure <code>MQTT_HOST</code> in <code>.env</code> matches the broker address.</p>
           <p><strong>Outlet commands not working</strong> &mdash; SNMP write community string may be incorrect. Check <code>PDU_COMMUNITY_WRITE</code> in your <code>.env</code> or PDU config. The default is usually <code>private</code>.</p>
-          <p><strong>No data in charts</strong> &mdash; History takes a few seconds to start populating after first launch. If it persists, check that the bridge can reach the PDU: <code>docker compose logs bridge</code>.</p>
+          <p><strong>No data in charts</strong> &mdash; History takes a few seconds to start populating after first launch. If it persists, check that the bridge can reach the PDU: <code>./start --logs</code>.</p>
           <p><strong>ATS panel shows all dashes</strong> &mdash; Your PDU model may not support ATS features. The bridge auto-detects capabilities. Standard PDU models will show limited source data.</p>
           <p><strong>Settings changes not persisting</strong> &mdash; PDU configuration is stored in <code>pdus.json</code> inside the container. Make sure the <code>./data</code> volume is mounted in <code>docker-compose.yml</code>.</p>
         </div>
@@ -1553,7 +1553,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
             <li><strong>Rename sources</strong> &mdash; in Settings &gt; Rename, customize "Input A" / "Input B" labels</li>
             <li><strong>Automation rules</strong> can protect equipment during power events &mdash; e.g., shed loads when voltage drops or when the ATS transfers to backup power</li>
             <li><strong>Keyboard shortcuts</strong> &mdash; Press <code>Escape</code> to close modals, settings panel, and outlet menus</li>
-            <li><strong>Docker rebuild</strong> is needed after code changes: <code>docker compose up -d --build</code></li>
+            <li><strong>Rebuild</strong> is needed after code changes: <code>./start --rebuild</code></li>
           </ul>
         </div>
       </div>
@@ -1956,8 +1956,8 @@ async function poll() {
     } else {
       title.innerHTML = '\u26A0 Bridge Offline';
       issues.innerHTML = `<li>Bridge API unreachable for ${_pollFailCount} consecutive polls</li>
-        <li>Check that the Docker container is running: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">docker compose ps</code></li>
-        <li>View logs: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">docker compose logs bridge</code></li>`;
+        <li>Check status: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">./start --status</code></li>
+        <li>View logs: <code style="font-size:10px;background:rgba(0,0,0,0.3);padding:1px 4px;border-radius:3px">./start --logs</code></li>`;
     }
 
     // Clear MQTT status too

@@ -172,7 +172,7 @@ async def run_wizard():
     print()
     print("Next steps:")
     print("  1. Review the config:  cat " + config_path)
-    print("  2. Start the stack:    ./run")
+    print("  2. Start the stack:    ./start")
     print("  3. Open the dashboard: http://localhost:8080")
     print()
     if len(configs) > 1:
