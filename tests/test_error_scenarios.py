@@ -116,7 +116,7 @@ class TestConfigDefaults:
         assert cfg.pdu_snmp_port == 161
         assert cfg.pdu_community_read == "public"
         assert cfg.pdu_community_write == "private"
-        assert cfg.device_id == "pdu44001"
+        assert cfg.device_id == ""
         assert cfg.mqtt_broker == "mosquitto"
         assert cfg.mqtt_port == 1883
         assert cfg.poll_interval == 1.0

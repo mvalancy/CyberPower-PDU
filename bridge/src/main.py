@@ -33,7 +33,7 @@ from .discovery import (
 from .history import HistoryStore
 from .mock_pdu import MockPDU
 from .mqtt_handler import MQTTHandler
-from .pdu_config import PDUConfig, load_pdu_configs, save_pdu_configs
+from .pdu_config import PDUConfig, load_pdu_configs, next_device_id, save_pdu_configs
 from .pdu_model import (
     ATS_SOURCE_MAP,
     OUTLET_CMD_MAP,
@@ -706,7 +706,10 @@ class PDUPoller:
         await self._query_startup_oids()
 
         # 4. Publish Home Assistant MQTT Discovery
-        self.mqtt.publish_ha_discovery(self._outlet_count, self._num_banks)
+        self.mqtt.publish_ha_discovery(
+            self._outlet_count, self._num_banks,
+            device_id=self.device_id, identity=self._identity,
+        )
 
         # 5. Register web callbacks for the first (or single) poller
         self.web.set_command_callback(self._handle_command)
@@ -749,6 +752,15 @@ class PDUPoller:
                 self._poll_count += 1
                 self._last_successful_poll = time.time()
                 self._last_poll_duration = time.monotonic() - poll_start
+
+                # Publish device info at low rate (~every 30 polls)
+                if self._identity and self._poll_count % 30 == 1:
+                    self.mqtt.publish_device_info(
+                        self._identity,
+                        device_id=self.device_id,
+                        transport=self._active_transport_name,
+                        state=self._state.value,
+                    )
 
                 if self._poll_count % 60 == 1:
                     logger.info(
@@ -1094,6 +1106,10 @@ class BridgeManager:
 
     async def _handle_add_pdu(self, body: dict):
         """Add a PDU at runtime — create config, poller, and launch task."""
+        # Auto-assign device_id if not provided
+        if not body.get("device_id"):
+            existing = {c.device_id for c in self._pdu_configs}
+            body["device_id"] = next_device_id(existing)
         pdu_cfg = PDUConfig.from_dict(body)
         pdu_cfg.validate()
 

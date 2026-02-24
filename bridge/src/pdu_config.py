@@ -7,12 +7,23 @@
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PDUS_FILE = "/data/pdus.json"
+
+
+def next_device_id(existing_ids: set[str] | list[str] = ()) -> str:
+    """Return the next available auto-numbered device ID (pdu-01, pdu-02, …)."""
+    ids = set(existing_ids)
+    for n in range(1, 100):
+        candidate = f"pdu-{n:02d}"
+        if candidate not in ids:
+            return candidate
+    return f"pdu-{len(ids) + 1:02d}"
 
 
 @dataclass
@@ -60,9 +71,9 @@ class PDUConfig:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "PDUConfig":
+    def from_dict(cls, d: dict, fallback_id: str = "") -> "PDUConfig":
         return cls(
-            device_id=d["device_id"],
+            device_id=d.get("device_id") or fallback_id,
             host=d.get("host", ""),
             snmp_port=int(d.get("snmp_port", 161)),
             community_read=d.get("community_read", "public"),
@@ -103,7 +114,7 @@ def load_pdu_configs(pdus_file: str = DEFAULT_PDUS_FILE,
                      env_port: int = 161,
                      env_community_read: str = "public",
                      env_community_write: str = "private",
-                     env_device_id: str = "pdu44001",
+                     env_device_id: str = "",
                      mock_mode: bool = False,
                      env_serial_port: str = "",
                      env_serial_baud: int = 9600,
@@ -116,6 +127,8 @@ def load_pdu_configs(pdus_file: str = DEFAULT_PDUS_FILE,
     1. pdus.json file if it exists
     2. Environment variables (single PDU — existing .env works unchanged)
     3. Mock mode generates a mock config
+
+    Device IDs are auto-assigned as pdu-01, pdu-02, etc. when not specified.
     """
     path = Path(pdus_file)
 
@@ -123,9 +136,12 @@ def load_pdu_configs(pdus_file: str = DEFAULT_PDUS_FILE,
         try:
             data = json.loads(path.read_text())
             pdus = []
+            used_ids: set[str] = set()
             for d in data.get("pdus", []):
-                pdu = PDUConfig.from_dict(d)
+                fallback = next_device_id(used_ids)
+                pdu = PDUConfig.from_dict(d, fallback_id=fallback)
                 pdu.validate()
+                used_ids.add(pdu.device_id)
                 pdus.append(pdu)
             if pdus:
                 logger.info("Loaded %d PDU(s) from %s", len(pdus), path)
@@ -134,17 +150,19 @@ def load_pdu_configs(pdus_file: str = DEFAULT_PDUS_FILE,
         except Exception:
             logger.exception("Failed to load %s, falling back to env vars", path)
 
+    device_id = env_device_id or next_device_id()
+
     if mock_mode:
         logger.info("Mock mode — using simulated PDU config")
         return [PDUConfig(
-            device_id=env_device_id,
+            device_id=device_id,
             host="127.0.0.1",
             label="Mock PDU",
         )]
 
     if env_host or env_serial_port:
         pdu = PDUConfig(
-            device_id=env_device_id,
+            device_id=device_id,
             host=env_host,
             snmp_port=env_port,
             community_read=env_community_read,

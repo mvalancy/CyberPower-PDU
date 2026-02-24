@@ -14,7 +14,31 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "bridge"))
 
-from src.pdu_config import PDUConfig, load_pdu_configs, save_pdu_configs
+from src.pdu_config import PDUConfig, load_pdu_configs, next_device_id, save_pdu_configs
+
+
+# ---------------------------------------------------------------------------
+# Auto-numbering
+# ---------------------------------------------------------------------------
+
+def test_next_device_id_empty():
+    assert next_device_id() == "pdu-01"
+
+def test_next_device_id_skips_existing():
+    assert next_device_id({"pdu-01"}) == "pdu-02"
+    assert next_device_id({"pdu-01", "pdu-02"}) == "pdu-03"
+
+def test_next_device_id_fills_gaps():
+    assert next_device_id({"pdu-02"}) == "pdu-01"
+
+def test_from_dict_auto_assigns_id():
+    """from_dict with missing device_id uses fallback."""
+    cfg = PDUConfig.from_dict({"host": "10.0.0.1"}, fallback_id="pdu-01")
+    assert cfg.device_id == "pdu-01"
+
+def test_from_dict_explicit_id_wins():
+    cfg = PDUConfig.from_dict({"device_id": "my-pdu", "host": "10.0.0.1"}, fallback_id="pdu-01")
+    assert cfg.device_id == "my-pdu"
 
 
 # ---------------------------------------------------------------------------

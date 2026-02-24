@@ -370,6 +370,40 @@ class MQTTHandler:
             qos=1,
         )
 
+    # --- Device info (low-rate publish) ---
+
+    def publish_device_info(
+        self, identity: DeviceIdentity, device_id: str | None = None,
+        transport: str = "", state: str = "",
+    ):
+        """Publish device identity and metadata (retained, called every ~30s)."""
+        dev = device_id or self.device
+        info: dict = {
+            "device_id": dev,
+            "serial": identity.serial,
+            "serial_numeric": identity.serial_numeric,
+            "model": identity.model,
+            "name": identity.name,
+            "firmware_main": identity.firmware_main,
+            "firmware_secondary": identity.firmware_secondary,
+            "hardware_rev": identity.hardware_rev,
+            "outlet_count": identity.outlet_count,
+            "phase_count": identity.phase_count,
+            "max_current": identity.max_current,
+            "timestamp": time.time(),
+        }
+        if transport:
+            info["transport"] = transport
+        if state:
+            info["state"] = state
+        if identity.sys_name:
+            info["sys_name"] = identity.sys_name
+        if identity.sys_location:
+            info["sys_location"] = identity.sys_location
+        if identity.sys_contact:
+            info["sys_contact"] = identity.sys_contact
+        self._publish(f"pdu/{dev}/device", json.dumps(info), retain=True)
+
     # --- Home Assistant MQTT Discovery ---
 
     def publish_ha_discovery(

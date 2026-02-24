@@ -27,7 +27,7 @@ class Config:
         self.pdu_snmp_port = self._int("PDU_SNMP_PORT", "161", 1, 65535)
         self.pdu_community_read = os.environ.get("PDU_COMMUNITY_READ", "public")
         self.pdu_community_write = os.environ.get("PDU_COMMUNITY_WRITE", "private")
-        self.device_id = os.environ.get("PDU_DEVICE_ID", "pdu44001")
+        self.device_id = os.environ.get("PDU_DEVICE_ID", "")
 
         self.mqtt_broker = os.environ.get("MQTT_BROKER", "mosquitto")
         self.mqtt_port = self._int("MQTT_PORT", "1883", 1, 65535)
@@ -74,8 +74,8 @@ class Config:
             "BRIDGE_RECOVERY_ENABLED", "true"
         ).lower() in ("true", "1", "yes")
 
-        # Validate device_id has no MQTT-unsafe characters
-        if any(c in self.device_id for c in "/#+ "):
+        # Validate device_id has no MQTT-unsafe characters (empty is OK — auto-assigned later)
+        if self.device_id and any(c in self.device_id for c in "/#+ "):
             raise ConfigError(
                 f"PDU_DEVICE_ID contains invalid characters: {self.device_id!r}"
             )

@@ -702,7 +702,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
   <div class="header-device">
     <select id="pdu-selector" style="display:none;background:var(--surface-hi);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer" onchange="switchPDU(this.value)"></select>
     <span class="header-device-name"><span id="device-name">--</span><button class="inline-edit-btn" onclick="openSettings();switchSettingsTab(document.querySelector('[data-tab=tab-rename]'),'tab-rename')" title="Edit device name">&#9998;</button></span>
-    <code id="device-id">--</code>
+    <code id="device-id" title="MQTT topic prefix: pdu/{device-id}/…">--</code>
     <span class="conn-label">API</span>
     <span class="conn-dot err" id="conn-dot" title="Disconnected"></span>
     <span class="conn-status-text err" id="conn-text">Offline</span>
@@ -1065,8 +1065,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 
         <div class="wizard-step" id="wiz-step-config">
           <div class="wizard-step-title">Step 3: Configure</div>
-          <div class="pdu-edit-field"><label>Device ID</label><input id="wiz-device-id" placeholder="rack1-pdu"></div>
-          <div class="pdu-edit-field"><label>Label</label><input id="wiz-label" placeholder="Server Room PDU"></div>
+          <div class="pdu-edit-field"><label>Device ID <span style="font-weight:400;font-size:10px;color:var(--text-3)">(MQTT topic prefix)</span></label><input id="wiz-device-id" placeholder="auto-assigned: pdu-01, pdu-02, …"><div class="field-hint">Leave blank to auto-assign. This becomes the MQTT topic prefix: <code>pdu/&lt;device-id&gt;/…</code></div></div>
+          <div class="pdu-edit-field"><label>Label</label><input id="wiz-label" placeholder="Server Room PDU"><div class="field-hint">Display name shown in the PDU dropdown (does not affect MQTT topics)</div></div>
           <div id="wiz-config-snmp-fields">
             <div class="pdu-edit-field"><label>Community Write</label><input id="wiz-comm-write" value="private"></div>
           </div>
@@ -2599,6 +2599,7 @@ async function refreshSettingsPDUs() {
           </div>
           <div class="edit-group grp-general">
             <div class="edit-group-title">General</div>
+            <div class="pdu-edit-field"><label>Device ID <span style="font-weight:400;font-size:10px;color:var(--text-3)">(MQTT topic prefix)</span></label><code style="display:block;padding:7px 10px;background:rgba(0,0,0,0.2);border-radius:4px;color:var(--cyan);font-size:12px">${esc(p.device_id)}</code><div class="field-hint">MQTT topics: <code>pdu/${esc(p.device_id)}/…</code> &bull; Set when the PDU is added</div></div>
             <div class="pdu-edit-field"><label>Primary Transport</label><select id="edit-transport-${esc(p.device_id)}" title="Which transport to use as primary (failover to the other if available)">
               <option value="snmp"${(c.transport || 'snmp') === 'snmp' ? ' selected' : ''}>SNMP</option>
               <option value="serial"${c.transport === 'serial' ? ' selected' : ''}>Serial</option>
@@ -3037,7 +3038,6 @@ function wizardConfirm() {
   if (wizardData.transport !== 'serial') {
     wizardData.community_write = document.getElementById('wiz-comm-write').value.trim() || 'private';
   }
-  if (!wizardData.device_id) { showToast('Device ID is required', 'error'); return; }
   if (!wizardData.host && !wizardData.serial_port) { showToast('Host or serial port is required', 'error'); return; }
 
   const summary = document.getElementById('wiz-summary');
@@ -3047,7 +3047,7 @@ function wizardConfirm() {
     : esc(wizardData.host || '--');
 
   summary.innerHTML = `
-    <dt>Device ID</dt><dd>${esc(wizardData.device_id)}</dd>
+    <dt>Device ID</dt><dd>${esc(wizardData.device_id || '(auto-assigned)')}</dd>
     <dt>Transport</dt><dd>${transportLabel}</dd>
     <dt>${wizardData.transport === 'serial' ? 'Port' : 'Host'}</dt><dd>${connInfo}</dd>
     <dt>Label</dt><dd>${esc(wizardData.label || '--')}</dd>
