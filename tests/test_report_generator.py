@@ -22,6 +22,7 @@ from bridge.src.report_generator import (
     _per_day_kwh,
     _per_day_source_kwh,
     _per_outlet_kwh,
+    _per_outlet_source_kwh,
     _sum_source_kwh,
     _sum_total_kwh,
     generate_monthly_report,
@@ -61,10 +62,30 @@ def _make_daily_rows(start_date: str, days: int, base_kwh: float = 1.0):
             "date": date, "device_id": "pdu-1", "source": None, "outlet": 1,
             "kwh": base_kwh * 0.3, "peak_power_w": 80.0, "avg_power_w": 40.0, "samples": 86400,
         })
+        # Outlet 1 source A
+        rows.append({
+            "date": date, "device_id": "pdu-1", "source": 1, "outlet": 1,
+            "kwh": base_kwh * 0.18, "peak_power_w": 50.0, "avg_power_w": 25.0, "samples": 50000,
+        })
+        # Outlet 1 source B
+        rows.append({
+            "date": date, "device_id": "pdu-1", "source": 2, "outlet": 1,
+            "kwh": base_kwh * 0.12, "peak_power_w": 40.0, "avg_power_w": 20.0, "samples": 36000,
+        })
         # Outlet 2 total
         rows.append({
             "date": date, "device_id": "pdu-1", "source": None, "outlet": 2,
             "kwh": base_kwh * 0.7, "peak_power_w": 150.0, "avg_power_w": 80.0, "samples": 86400,
+        })
+        # Outlet 2 source A
+        rows.append({
+            "date": date, "device_id": "pdu-1", "source": 1, "outlet": 2,
+            "kwh": base_kwh * 0.42, "peak_power_w": 100.0, "avg_power_w": 55.0, "samples": 50000,
+        })
+        # Outlet 2 source B
+        rows.append({
+            "date": date, "device_id": "pdu-1", "source": 2, "outlet": 2,
+            "kwh": base_kwh * 0.28, "peak_power_w": 60.0, "avg_power_w": 30.0, "samples": 36000,
         })
     return rows
 
@@ -147,6 +168,21 @@ class TestSumHelpers:
         assert 2 in outlets
         assert outlets[1] == pytest.approx(2.1, abs=0.001)
         assert outlets[2] == pytest.approx(4.9, abs=0.001)
+
+    def test_per_outlet_source_kwh(self):
+        rows = _make_daily_rows("2026-02-16", 7)
+        by_source = _per_outlet_source_kwh(rows)
+        assert 1 in by_source
+        assert 2 in by_source
+        # Outlet 1: 7 * 0.18 = 1.26 from source A, 7 * 0.12 = 0.84 from source B
+        assert by_source[1][1] == pytest.approx(1.26, abs=0.001)
+        assert by_source[1][2] == pytest.approx(0.84, abs=0.001)
+        # Outlet 2: 7 * 0.42 = 2.94 from source A, 7 * 0.28 = 1.96 from source B
+        assert by_source[2][1] == pytest.approx(2.94, abs=0.001)
+        assert by_source[2][2] == pytest.approx(1.96, abs=0.001)
+
+    def test_per_outlet_source_kwh_empty(self):
+        assert _per_outlet_source_kwh([]) == {}
 
     def test_per_day_kwh(self):
         rows = _make_daily_rows("2026-02-16", 3)

@@ -266,6 +266,22 @@ def _per_outlet_kwh(rows: list[dict]) -> dict[int, float]:
     return outlets
 
 
+def _per_outlet_source_kwh(rows: list[dict]) -> dict[int, dict[int, float]]:
+    """Get per-outlet kWh broken down by source.
+
+    Returns {outlet: {source: kwh}}, e.g. {1: {1: 0.6, 2: 0.4}}.
+    Only includes rows where both source and outlet are non-None.
+    """
+    result: dict[int, dict[int, float]] = {}
+    for r in rows:
+        src = r.get("source")
+        outlet = r.get("outlet")
+        if src is not None and outlet is not None:
+            result.setdefault(outlet, {})
+            result[outlet][src] = result[outlet].get(src, 0) + r["kwh"]
+    return result
+
+
 def _per_day_kwh(rows: list[dict]) -> dict[str, float]:
     """Get per-day total kWh (source=NULL, outlet=NULL)."""
     days: dict[str, float] = {}
@@ -358,6 +374,7 @@ def generate_weekly_report(
     source_b = _sum_source_kwh(rows, 2)
     daily_totals = _per_day_kwh(rows)
     outlet_totals = _per_outlet_kwh(rows)
+    outlet_by_source = _per_outlet_source_kwh(rows)
     daily_a = _per_day_source_kwh(rows, 1)
     daily_b = _per_day_source_kwh(rows, 2)
 
@@ -422,16 +439,23 @@ def generate_weekly_report(
     chart_data = [(d, kwh) for d, kwh in sorted(daily_totals.items())]
     pdf.bar_chart(chart_data, COLOR_CYAN)
 
-    # --- Per-Outlet Breakdown ---
+    # --- Per-Outlet Breakdown (by source) ---
     if outlet_totals:
         pdf.section_title("Per-Outlet Breakdown")
         sorted_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)
-        outlet_headers = ["Outlet", "Total kWh", "% of Total"]
+        outlet_headers = ["Outlet", "Total kWh", "Source A", "Source B", "% of Total"]
         outlet_rows = []
         for num, kwh in sorted_outlets:
             pct = (kwh / total_kwh * 100) if total_kwh > 0 else 0
-            outlet_rows.append([f"Outlet {num}", f"{kwh:.3f}", f"{pct:.1f}%"])
-        pdf.data_table(outlet_headers, outlet_rows, [50, 60, 60])
+            src = outlet_by_source.get(num, {})
+            outlet_rows.append([
+                f"Outlet {num}",
+                f"{kwh:.3f}",
+                f"{src.get(1, 0):.3f}",
+                f"{src.get(2, 0):.3f}",
+                f"{pct:.1f}%",
+            ])
+        pdf.data_table(outlet_headers, outlet_rows, [40, 32, 32, 32, 28])
 
         # Outlet chart
         pdf.ln(3)
@@ -522,6 +546,7 @@ def generate_monthly_report(
     source_b = _sum_source_kwh(rows, 2)
     daily_totals = _per_day_kwh(rows)
     outlet_totals = _per_outlet_kwh(rows)
+    outlet_by_source = _per_outlet_source_kwh(rows)
     daily_a = _per_day_source_kwh(rows, 1)
     daily_b = _per_day_source_kwh(rows, 2)
 
@@ -586,16 +611,23 @@ def generate_monthly_report(
         chart_data = [(d[-5:], kwh) for d, kwh in sorted(daily_totals.items())]
         pdf.bar_chart(chart_data, COLOR_CYAN)
 
-    # --- Per-Outlet Breakdown ---
+    # --- Per-Outlet Breakdown (by source) ---
     if outlet_totals:
         pdf.section_title("Per-Outlet Breakdown")
         sorted_outlets = sorted(outlet_totals.items(), key=lambda x: x[1], reverse=True)
-        outlet_headers = ["Outlet", "Total kWh", "% of Total"]
+        outlet_headers = ["Outlet", "Total kWh", "Source A", "Source B", "% of Total"]
         outlet_rows = []
         for num, kwh in sorted_outlets:
             pct = (kwh / total_kwh * 100) if total_kwh > 0 else 0
-            outlet_rows.append([f"Outlet {num}", f"{kwh:.3f}", f"{pct:.1f}%"])
-        pdf.data_table(outlet_headers, outlet_rows, [50, 60, 60])
+            src = outlet_by_source.get(num, {})
+            outlet_rows.append([
+                f"Outlet {num}",
+                f"{kwh:.3f}",
+                f"{src.get(1, 0):.3f}",
+                f"{src.get(2, 0):.3f}",
+                f"{pct:.1f}%",
+            ])
+        pdf.data_table(outlet_headers, outlet_rows, [40, 32, 32, 32, 28])
 
         pdf.ln(3)
         outlet_chart = [(f"Outlet {n}", kwh) for n, kwh in sorted_outlets[:16]]
