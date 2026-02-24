@@ -747,11 +747,50 @@ class TestMQTTReliability:
             handler.publish_ha_discovery(10, 2)
 
         status = handler.get_status()
-        assert status["ha_discovery_sent"] is True
+        # ha_discovery_sent is a dict keyed by device_id
+        assert status["ha_discovery_sent"].get("stress-test") is True
         # Should only have published discovery configs once
-        # 10 outlet switches + 12 bank sensors + 2 input sensors + 1 bridge sensor = 25
-        # Check that total publishes is exactly 25 (not 2500)
-        assert status["total_publishes"] == 25
+        # 10 outlet switches + 14 bank sensors (2 banks * 7) + 2 input sensors
+        # + 4 ATS config + 4 ATS status + 6 source sensors (2 * 3)
+        # + 2 coldstart + 3 total + 2 env + 1 bridge binary = 48
+        # Check that total publishes is exactly 48 (not 4800)
+        assert status["total_publishes"] == 48
+
+    def test_reconnect_queue_drain(self, mock_mqtt, metrics):
+        """Retained messages queued during disconnect are drained on reconnect."""
+        handler = mock_mqtt
+        mock_client = handler.client
+
+        # Reset state from previous tests in this class
+        handler._pending_publishes.clear()
+        handler._total_publishes = 0
+        handler._publish_errors = 0
+        mock_client.publish.reset_mock()
+
+        # Simulate failed publishes (rc != 0) to queue retained messages
+        from paho.mqtt.client import MQTT_ERR_NO_CONN
+        fail_info = MagicMock(rc=MQTT_ERR_NO_CONN)
+        mock_client.publish.return_value = fail_info
+
+        data = make_pdu_data()
+        handler.publish_pdu_data(data)
+
+        # Retained messages should be queued
+        queued = len(handler._pending_publishes)
+        assert queued > 0, "No messages were queued during failure"
+
+        # Now simulate reconnect — switch publish back to success
+        ok_info = MagicMock(rc=0)
+        mock_client.publish.return_value = ok_info
+        mock_client.publish.reset_mock()
+
+        handler._on_connect(handler.client, None, MagicMock(), 0, None)
+
+        # Queue should be drained
+        assert len(handler._pending_publishes) == 0, "Queue not drained after reconnect"
+        # The drain should have called publish for each queued message
+        # (plus the online status publish from _on_connect)
+        assert mock_client.publish.call_count >= queued
 
 
 class TestIntegratedReliability:
@@ -1091,8 +1130,9 @@ class TestHealthMetricAccuracy:
 
         status = handler.get_status()
         # Each publish_pdu_data publishes: 1 status + 2 input + (10 outlets * 5 fields)
-        # + (2 banks * 6 fields) = 1 + 2 + 50 + 12 = 65 publishes per call
-        assert status["total_publishes"] == 100 * 65
+        # + (2 banks * 6 fields) + 4 ATS status + 3 source_a + 3 source_b
+        # = 1 + 2 + 50 + 12 + 4 + 3 + 3 = 75 publishes per call
+        assert status["total_publishes"] == 100 * 75
         assert status["publish_errors"] == 0
 
     @pytest.mark.asyncio

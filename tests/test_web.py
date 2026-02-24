@@ -11,7 +11,7 @@ import os
 import sys
 import tempfile
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -1996,6 +1996,44 @@ class TestSSE:
 
         await web_server.broadcast_sse("test", {"hello": "world"})
         assert len(web_server._sse_clients) == 0
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_delivers_to_live_clients(self, web_server):
+        """broadcast_sse writes correctly-formatted SSE payload to connected clients."""
+        live_client = AsyncMock()
+        web_server._sse_clients.append(live_client)
+
+        await web_server.broadcast_sse("status", {"voltage": 120.5})
+
+        live_client.write.assert_called_once()
+        payload = live_client.write.call_args[0][0]
+        text = payload.decode()
+        assert text.startswith("event: status\n")
+        assert '"voltage": 120.5' in text
+        assert text.endswith("\n\n")
+        # Client stays in the list (not removed)
+        assert len(web_server._sse_clients) == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_mixed_live_and_dead_clients(self, web_server):
+        """broadcast_sse delivers to live clients and removes dead ones."""
+        live_client = AsyncMock()
+        dead_client = MagicMock()
+        dead_client.write = MagicMock(side_effect=ConnectionResetError("gone"))
+        web_server._sse_clients.extend([live_client, dead_client])
+
+        await web_server.broadcast_sse("update", {"state": "on"})
+
+        live_client.write.assert_called_once()
+        assert len(web_server._sse_clients) == 1
+        assert web_server._sse_clients[0] is live_client
+
+    @pytest.mark.asyncio
+    async def test_broadcast_sse_noop_without_clients(self, web_server):
+        """broadcast_sse returns immediately when no clients are connected."""
+        assert len(web_server._sse_clients) == 0
+        # Should not raise
+        await web_server.broadcast_sse("status", {"voltage": 120.0})
 
     @pytest.mark.asyncio
     async def test_sse_auth_skip(self, engine_and_path):
