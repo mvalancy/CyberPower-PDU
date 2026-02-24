@@ -2,6 +2,10 @@
 
 A self-hosted SNMP + Serial to MQTT bridge for CyberPower PDUs — including ATS dual-source models — with a real-time web dashboard, device management, historical charts, automation rules, and Home Assistant integration.
 
+<p align="center">
+  <img src="docs/PDU44001.png" alt="CyberPower PDU44001" width="600" />
+</p>
+
 ![CyberPower PDU Bridge Dashboard](docs/screenshots/dashboard.png)
 
 ## Quick Start
