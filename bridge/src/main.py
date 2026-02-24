@@ -1506,8 +1506,14 @@ class BridgeManager:
     # ------------------------------------------------------------------
 
     async def _report_scheduler(self):
-        """Background task — auto-generate weekly (Monday) and monthly (1st) reports."""
+        """Background task — auto-generate weekly (Monday) and monthly (1st) reports.
+
+        On first run, catches up any missing reports over the past 8 weeks
+        and 3 months so the system self-heals after downtime or first install.
+        After catch-up, checks hourly for new reports to generate.
+        """
         await asyncio.sleep(60)  # Startup delay
+        caught_up = False
         while self._running:
             try:
                 if not self.config.reports_enabled:
@@ -1515,12 +1521,35 @@ class BridgeManager:
                     continue
 
                 now = datetime.now()
-                # Weekly: Monday, first 2 hours
+
+                if not caught_up:
+                    # Catch-up: generate any missing weekly reports (past 8 weeks)
+                    for weeks_ago in range(8, 0, -1):
+                        monday = now - timedelta(days=now.weekday() + 7 * weeks_ago)
+                        week_start = monday.strftime("%Y-%m-%d")
+                        for poller in self.pollers:
+                            self._generate_report_for_poller(
+                                poller, "weekly", week_start=week_start,
+                            )
+
+                    # Catch-up: generate any missing monthly reports (past 3 months)
+                    dt = now.replace(day=1)
+                    for _ in range(3):
+                        dt = (dt - timedelta(days=1)).replace(day=1)
+                        month_str = dt.strftime("%Y-%m")
+                        for poller in self.pollers:
+                            self._generate_report_for_poller(
+                                poller, "monthly", month=month_str,
+                            )
+
+                    caught_up = True
+                    logger.info("Report scheduler catch-up complete")
+
+                # Ongoing: weekly on Monday, monthly on 1st
                 if now.weekday() == 0 and now.hour < 2:
                     for poller in self.pollers:
                         self._generate_report_for_poller(poller, "weekly")
 
-                # Monthly: 1st of month, first 2 hours
                 if now.day == 1 and now.hour < 2:
                     for poller in self.pollers:
                         self._generate_report_for_poller(poller, "monthly")
@@ -1549,11 +1578,15 @@ class BridgeManager:
 
         try:
             if report_type == "weekly":
-                # Check idempotency — skip if file already exists
+                # Check idempotency — snap to Monday, skip if file already exists
                 if week_start is None:
                     today = datetime.now()
                     start = today - timedelta(days=today.weekday() + 7)
                     week_start = start.strftime("%Y-%m-%d")
+                else:
+                    # Snap any date to its Monday
+                    ws_dt = datetime.strptime(week_start, "%Y-%m-%d")
+                    week_start = (ws_dt - timedelta(days=ws_dt.weekday())).strftime("%Y-%m-%d")
                 safe_id = poller.device_id or "default"
                 expected = Path(reports_dir) / f"{safe_id}_weekly_{week_start}.pdf"
                 if expected.exists():

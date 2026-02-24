@@ -338,6 +338,49 @@ class TestWeeklyReport:
         # May or may not return a path depending on dates
         # The point is it doesn't raise
 
+    def test_snaps_midweek_to_monday(self, tmp_path):
+        """If week_start is a Thursday, snaps back to the Monday of that week."""
+        # 2026-02-19 is a Thursday, should snap to 2026-02-16 (Monday)
+        rows = _make_daily_rows("2026-02-16", 7)
+        prev_rows = _make_daily_rows("2026-02-09", 7, base_kwh=0.8)
+        history = _mock_history(rows, prev_rows)
+
+        result = generate_weekly_report(
+            history, "pdu-1", "Test PDU", "PDU44001",
+            week_start="2026-02-19", reports_dir=str(tmp_path),
+        )
+        assert result is not None
+        path = Path(result)
+        # Filename should use the Monday, not the Thursday
+        assert path.name == "pdu-1_weekly_2026-02-16.pdf"
+
+    def test_snaps_sunday_to_monday(self, tmp_path):
+        """If week_start is a Sunday, snaps back to the Monday of that week."""
+        # 2026-02-22 is a Sunday, should snap to 2026-02-16 (Monday)
+        rows = _make_daily_rows("2026-02-16", 7)
+        prev_rows = _make_daily_rows("2026-02-09", 7, base_kwh=0.8)
+        history = _mock_history(rows, prev_rows)
+
+        result = generate_weekly_report(
+            history, "pdu-1", "Test PDU", "PDU44001",
+            week_start="2026-02-22", reports_dir=str(tmp_path),
+        )
+        assert result is not None
+        assert Path(result).name == "pdu-1_weekly_2026-02-16.pdf"
+
+    def test_monday_stays_monday(self, tmp_path):
+        """If week_start is already a Monday, it stays unchanged."""
+        rows = _make_daily_rows("2026-02-16", 7)
+        prev_rows = _make_daily_rows("2026-02-09", 7, base_kwh=0.8)
+        history = _mock_history(rows, prev_rows)
+
+        result = generate_weekly_report(
+            history, "pdu-1", "Test PDU", "PDU44001",
+            week_start="2026-02-16", reports_dir=str(tmp_path),
+        )
+        assert result is not None
+        assert Path(result).name == "pdu-1_weekly_2026-02-16.pdf"
+
 
 # ---------------------------------------------------------------------------
 # Tests: monthly report generation

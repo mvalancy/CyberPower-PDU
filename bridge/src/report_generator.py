@@ -368,9 +368,11 @@ def generate_weekly_report(
     Returns:
         Path to generated PDF, or None if no data.
     """
-    # Determine week range
+    # Determine week range — always snap to Monday
     if week_start:
         start = datetime.strptime(week_start, "%Y-%m-%d")
+        # Snap to Monday of that week
+        start = start - timedelta(days=start.weekday())
     else:
         today = datetime.now()
         # Previous Monday
