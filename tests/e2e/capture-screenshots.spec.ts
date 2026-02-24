@@ -23,6 +23,17 @@ function shot(name: string) {
   return path.join(SCREENSHOTS, name);
 }
 
+/** Shrink settings panel to content height for tight screenshots. */
+async function shrinkSettings(page: Page) {
+  await page.evaluate(() => {
+    const panel = document.getElementById('settings-panel');
+    if (panel) {
+      panel.style.height = 'auto';
+      panel.style.position = 'relative';
+    }
+  });
+}
+
 /** Navigate to dashboard and wait for live data to populate. */
 async function loadDashboard(page: Page) {
   await page.goto('/');
@@ -106,6 +117,7 @@ test.describe('Screenshot Capture', () => {
       await page.locator('.pdu-card-edit').first().waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
       await page.waitForTimeout(300);
     }
+    await shrinkSettings(page);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-pdus.png') });
   });
 
@@ -114,6 +126,7 @@ test.describe('Screenshot Capture', () => {
     await openSettings(page);
     await switchToTab(page, 'tab-general');
     await page.waitForTimeout(300);
+    await shrinkSettings(page);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-general.png') });
   });
 
@@ -123,6 +136,7 @@ test.describe('Screenshot Capture', () => {
     await switchToTab(page, 'tab-manage');
     await page.locator('#mgmt-header').waitFor({ timeout: 10000 });
     await page.waitForTimeout(1000);
+    await shrinkSettings(page);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-manage.png') });
   });
 
@@ -131,6 +145,7 @@ test.describe('Screenshot Capture', () => {
     await openSettings(page);
     await switchToTab(page, 'tab-rename');
     await page.waitForTimeout(300);
+    await shrinkSettings(page);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-rename.png') });
   });
 
@@ -138,9 +153,9 @@ test.describe('Screenshot Capture', () => {
     await loadDashboard(page);
     await openSettings(page);
     await switchToTab(page, 'tab-logs');
-    // Wait for log viewer to load content
     await page.locator('#log-viewer').waitFor({ timeout: 5000 });
     await page.waitForTimeout(1000);
+    await shrinkSettings(page);
     await page.locator('#settings-panel').screenshot({ path: shot('settings-logs.png') });
   });
 
