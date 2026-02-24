@@ -1,12 +1,17 @@
 # CyberPower PDU Bridge
 
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776ab.svg?logo=python&logoColor=white)](https://python.org)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ed.svg?logo=docker&logoColor=white)](docker-compose.yml)
+[![MQTT](https://img.shields.io/badge/MQTT-Mosquitto-660066.svg?logo=eclipsemosquitto&logoColor=white)](docs/mqtt-topics.md)
+[![Home Assistant](https://img.shields.io/badge/Home_Assistant-Discovery-41bdf5.svg?logo=homeassistant&logoColor=white)](docs/configuration.md)
+[![Tests: 942](https://img.shields.io/badge/Tests-942_passing-05ffa1.svg)](#)
+
 A self-hosted SNMP + Serial to MQTT bridge for CyberPower PDUs — including ATS dual-source models — with a real-time web dashboard, device management, historical charts, automation rules, and Home Assistant integration.
 
 <p align="center">
-  <img src="docs/PDU44001.png" alt="CyberPower PDU44001" width="600" />
+  <img src="docs/screenshots/PDU44001.png" alt="CyberPower PDU44001" width="600" />
 </p>
-
-![CyberPower PDU Bridge Dashboard](docs/screenshots/dashboard.png)
 
 ## Quick Start
 
@@ -18,6 +23,25 @@ cd CyberPower-PDU
 nano .env            # Set PDU_HOST to your PDU's IP (or BRIDGE_MOCK_MODE=true)
 ./start              # Start the stack — open http://localhost:8080
 ```
+
+## Screenshots
+
+<table>
+<tr>
+<td><a href="docs/features.md#dashboard"><img src="docs/screenshots/dashboard.png" width="400" alt="Dashboard"/></a><br/><sub>Real-time dashboard with ATS monitoring</sub></td>
+<td><a href="docs/features.md#authentication"><img src="docs/screenshots/login.png" width="400" alt="Login"/></a><br/><sub>Optional web authentication</sub></td>
+</tr>
+<tr>
+<td><a href="docs/features.md#settings--configuration"><img src="docs/screenshots/settings-pdus.png" width="400" alt="Settings"/></a><br/><sub>Multi-PDU configuration</sub></td>
+<td><a href="docs/features.md#pdu-management"><img src="docs/screenshots/settings-manage.png" width="400" alt="Management"/></a><br/><sub>Full device management</sub></td>
+</tr>
+<tr>
+<td><a href="docs/features.md#historical-data--charts"><img src="docs/screenshots/charts.png" width="400" alt="Charts"/></a><br/><sub>Historical power, voltage, current</sub></td>
+<td><a href="docs/features.md#help"><img src="docs/screenshots/help.png" width="400" alt="Help"/></a><br/><sub>In-app help & troubleshooting</sub></td>
+</tr>
+</table>
+
+> **[See all features with full-size screenshots →](docs/features.md)**
 
 ## CLI Tools
 
@@ -106,6 +130,7 @@ graph LR
 
 | Guide | What's in it |
 |-------|-------------|
+| [Features](docs/features.md) | Visual walkthrough of every feature with screenshots |
 | [Getting Started](docs/getting-started.md) | Prerequisites, setup, mock mode, features |
 | [Configuration](docs/configuration.md) | All `.env` variables, `pdus.json`, automation rules |
 | [API Reference](docs/api-reference.md) | REST API with request/response examples |

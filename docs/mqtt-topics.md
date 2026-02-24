@@ -1,6 +1,6 @@
 # MQTT Topic Reference
 
-> **Docs:** [Getting Started](getting-started.md) | [Configuration](configuration.md) | [API Reference](api-reference.md) | [Architecture](architecture.md) | [MQTT Topics](mqtt-topics.md) | [SNMP OIDs](snmp-oids.md) | [Multi-PDU](multi-pdu.md) | [Security](security.md) | [Troubleshooting](troubleshooting.md)
+> **Docs:** [Getting Started](getting-started.md) | [Configuration](configuration.md) | [API Reference](api-reference.md) | [Architecture](architecture.md) | [MQTT Topics](mqtt-topics.md) | [SNMP OIDs](snmp-oids.md) | [Multi-PDU](multi-pdu.md) | [Security](security.md) | [Troubleshooting](troubleshooting.md) | [Features](features.md)
 
 Complete reference for every MQTT topic the bridge publishes and consumes. `{device}` is the device ID — auto-assigned as `pdu-01`, `pdu-02`, etc. or set manually. Outlet numbers (`{n}`) and bank numbers are 1-indexed.
 
