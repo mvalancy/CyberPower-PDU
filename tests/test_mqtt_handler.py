@@ -1087,8 +1087,8 @@ class TestPublishHADiscovery:
             if c[0][0].startswith("homeassistant/sensor/pdu44001_bank_")
         ]
 
-        # 6 metrics per bank, 2 banks = 12
-        assert len(sensor_calls) == 12
+        # 7 metrics per bank (voltage, current, power, apparent_power, power_factor, energy, load_state), 2 banks = 14
+        assert len(sensor_calls) == 14
 
         # Check a specific bank sensor
         bank1_voltage_calls = [
@@ -1189,8 +1189,9 @@ class TestPublishHADiscovery:
             handler.publish_ha_discovery(outlet_count=2, num_banks=1)
 
         # All publishes come from the first call only
-        # 2 outlet switches + 6 bank sensors + 2 input sensors + 4 ATS sensors + 3 total sensors + 1 bridge binary = 18
-        expected_count = 2 + 6 + 2 + 4 + 3 + 1
+        # 2 outlet switches + 7 bank sensors + 2 input sensors + 4 ATS config
+        # + 4 ATS status + 6 source sensors + 2 coldstart + 3 total + 2 env + 1 bridge binary = 33
+        expected_count = 2 + 7 + 2 + 4 + 4 + 6 + 2 + 3 + 2 + 1
         assert mock_client_instance.publish.call_count == expected_count
 
     def test_device_info_shared_across_entities(self, MockClient):
@@ -1743,14 +1744,18 @@ class TestHADiscoveryATSAndTotal:
             if c[0][0].startswith("homeassistant/sensor/pdu44001_ats_")
         ]
 
-        # 4 ATS sensors: voltage_sensitivity, transfer_voltage, voltage_upper_limit, voltage_lower_limit
-        assert len(ats_calls) == 4
+        # 8 ATS sensors: 4 config + 4 status (preferred_source, current_source, auto_transfer, redundancy)
+        assert len(ats_calls) == 8
 
         ats_topics = [c[0][0] for c in ats_calls]
         assert "homeassistant/sensor/pdu44001_ats_voltage_sensitivity/config" in ats_topics
         assert "homeassistant/sensor/pdu44001_ats_transfer_voltage/config" in ats_topics
         assert "homeassistant/sensor/pdu44001_ats_voltage_upper_limit/config" in ats_topics
         assert "homeassistant/sensor/pdu44001_ats_voltage_lower_limit/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_preferred_source/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_current_source/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_auto_transfer/config" in ats_topics
+        assert "homeassistant/sensor/pdu44001_ats_redundancy/config" in ats_topics
 
     def test_ats_sensor_config_structure(self, MockClient):
         from src.mqtt_handler import MQTTHandler

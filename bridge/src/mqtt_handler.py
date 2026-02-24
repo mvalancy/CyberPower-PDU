@@ -21,7 +21,7 @@ from typing import Callable, Awaitable
 import paho.mqtt.client as mqtt
 
 from .config import Config
-from .pdu_model import DeviceIdentity, PDUData
+from .pdu_model import ATS_SOURCE_MAP, DeviceIdentity, PDUData
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +298,57 @@ class MQTTHandler:
             self._publish(f"{prefix}/ats/voltage_upper_limit", str(data.voltage_upper_limit), retain=True)
         if data.voltage_lower_limit is not None:
             self._publish(f"{prefix}/ats/voltage_lower_limit", str(data.voltage_lower_limit), retain=True)
+
+        # ATS status
+        if data.ats_preferred_source is not None:
+            self._publish(
+                f"{prefix}/ats/preferred_source",
+                ATS_SOURCE_MAP.get(data.ats_preferred_source, str(data.ats_preferred_source)),
+                retain=True,
+            )
+        if data.ats_current_source is not None:
+            self._publish(
+                f"{prefix}/ats/current_source",
+                ATS_SOURCE_MAP.get(data.ats_current_source, str(data.ats_current_source)),
+                retain=True,
+            )
+        if data.ats_preferred_source is not None:
+            # Only publish auto_transfer when ATS is present
+            self._publish(
+                f"{prefix}/ats/auto_transfer",
+                "on" if data.ats_auto_transfer else "off",
+                retain=True,
+            )
+        if data.redundancy_ok is not None:
+            self._publish(
+                f"{prefix}/ats/redundancy",
+                "ok" if data.redundancy_ok else "lost",
+                retain=True,
+            )
+
+        # Per-source data (ATS models)
+        if data.source_a:
+            if data.source_a.voltage is not None:
+                self._publish(f"{prefix}/source/a/voltage", str(data.source_a.voltage), retain=True)
+            if data.source_a.frequency is not None:
+                self._publish(f"{prefix}/source/a/frequency", str(data.source_a.frequency), retain=True)
+            if data.source_a.voltage_status != "unknown":
+                self._publish(f"{prefix}/source/a/voltage_status", data.source_a.voltage_status, retain=True)
+        if data.source_b:
+            if data.source_b.voltage is not None:
+                self._publish(f"{prefix}/source/b/voltage", str(data.source_b.voltage), retain=True)
+            if data.source_b.frequency is not None:
+                self._publish(f"{prefix}/source/b/frequency", str(data.source_b.frequency), retain=True)
+            if data.source_b.voltage_status != "unknown":
+                self._publish(f"{prefix}/source/b/voltage_status", data.source_b.voltage_status, retain=True)
+
+        # Coldstart config
+        if data.coldstart_delay is not None:
+            self._publish(f"{prefix}/coldstart/delay", str(data.coldstart_delay), retain=True)
+        if data.coldstart_state:
+            self._publish(f"{prefix}/coldstart/state", data.coldstart_state, retain=True)
+
+        # Totals
         if data.total_load is not None:
             self._publish(f"{prefix}/total/load", str(data.total_load), retain=True)
         if data.total_power is not None:
@@ -331,6 +382,10 @@ class MQTTHandler:
                 self._publish(f"{bp}/apparent_power", str(bank.apparent_power), retain=True)
             if bank.power_factor is not None:
                 self._publish(f"{bp}/power_factor", str(bank.power_factor), retain=True)
+            if bank.energy is not None:
+                self._publish(f"{bp}/energy", str(bank.energy), retain=True)
+            if bank.last_update:
+                self._publish(f"{bp}/last_update", bank.last_update, retain=True)
             self._publish(f"{bp}/load_state", bank.load_state, retain=True)
 
     def publish_command_response(
@@ -481,6 +536,7 @@ class MQTTHandler:
             ("power", "W", "power", "mdi:flash"),
             ("apparent_power", "VA", None, "mdi:flash-outline"),
             ("power_factor", "", "power_factor", "mdi:angle-acute"),
+            ("energy", "kWh", "energy", "mdi:lightning-bolt"),
             ("load_state", "", None, "mdi:gauge"),
         ]
         for idx in range(1, num_banks + 1):
@@ -498,7 +554,9 @@ class MQTTHandler:
                     config["unit_of_measurement"] = unit
                 if dev_class:
                     config["device_class"] = dev_class
-                if metric != "load_state":
+                if metric == "energy":
+                    config["state_class"] = "total_increasing"
+                elif metric != "load_state":
                     config["state_class"] = "measurement"
                 self._publish(
                     f"homeassistant/sensor/{uid}/config",
@@ -552,6 +610,75 @@ class MQTTHandler:
                 json.dumps(config), retain=True,
             )
 
+        # ATS status sensors (only meaningful on ATS models, but harmless to register)
+        for metric, icon in [
+            ("preferred_source", "mdi:swap-horizontal"),
+            ("current_source", "mdi:power-plug"),
+            ("auto_transfer", "mdi:autorenew"),
+            ("redundancy", "mdi:shield-check"),
+        ]:
+            uid = f"{dev}_ats_{metric}"
+            config = {
+                "name": f"ATS {metric.replace('_', ' ').title()}",
+                "unique_id": uid,
+                "device": device_info,
+                "availability": avail,
+                "state_topic": f"{base}/ats/{metric}",
+                "icon": icon,
+            }
+            self._publish(
+                f"homeassistant/sensor/{uid}/config",
+                json.dumps(config), retain=True,
+            )
+
+        # Per-source sensors (ATS models)
+        for src in ("a", "b"):
+            for metric, unit, dev_class, icon in [
+                ("voltage", "V", "voltage", "mdi:flash-triangle"),
+                ("frequency", "Hz", "frequency", "mdi:sine-wave"),
+                ("voltage_status", "", None, "mdi:alert-circle-outline"),
+            ]:
+                uid = f"{dev}_source_{src}_{metric}"
+                config = {
+                    "name": f"Source {src.upper()} {metric.replace('_', ' ').title()}",
+                    "unique_id": uid,
+                    "device": device_info,
+                    "availability": avail,
+                    "state_topic": f"{base}/source/{src}/{metric}",
+                    "icon": icon,
+                }
+                if unit:
+                    config["unit_of_measurement"] = unit
+                if dev_class:
+                    config["device_class"] = dev_class
+                if metric != "voltage_status":
+                    config["state_class"] = "measurement"
+                self._publish(
+                    f"homeassistant/sensor/{uid}/config",
+                    json.dumps(config), retain=True,
+                )
+
+        # Coldstart sensors
+        for metric, icon in [
+            ("delay", "mdi:timer-outline"),
+            ("state", "mdi:power-settings"),
+        ]:
+            uid = f"{dev}_coldstart_{metric}"
+            config = {
+                "name": f"Coldstart {metric.title()}",
+                "unique_id": uid,
+                "device": device_info,
+                "availability": avail,
+                "state_topic": f"{base}/coldstart/{metric}",
+                "icon": icon,
+            }
+            if metric == "delay":
+                config["unit_of_measurement"] = "s"
+            self._publish(
+                f"homeassistant/sensor/{uid}/config",
+                json.dumps(config), retain=True,
+            )
+
         # Total load/power/energy sensors
         for metric, unit, dev_class, icon in [
             ("load", "A", "current", "mdi:current-ac"),
@@ -574,6 +701,40 @@ class MQTTHandler:
                 f"homeassistant/sensor/{uid}/config",
                 json.dumps(config), retain=True,
             )
+
+        # Environment sensors
+        uid = f"{dev}_env_temperature"
+        config = {
+            "name": "Temperature",
+            "unique_id": uid,
+            "device": device_info,
+            "availability": avail,
+            "state_topic": f"{base}/environment/temperature",
+            "unit_of_measurement": "\u00b0C",
+            "device_class": "temperature",
+            "state_class": "measurement",
+            "icon": "mdi:thermometer",
+        }
+        self._publish(
+            f"homeassistant/sensor/{uid}/config",
+            json.dumps(config), retain=True,
+        )
+        uid = f"{dev}_env_humidity"
+        config = {
+            "name": "Humidity",
+            "unique_id": uid,
+            "device": device_info,
+            "availability": avail,
+            "state_topic": f"{base}/environment/humidity",
+            "unit_of_measurement": "%",
+            "device_class": "humidity",
+            "state_class": "measurement",
+            "icon": "mdi:water-percent",
+        }
+        self._publish(
+            f"homeassistant/sensor/{uid}/config",
+            json.dumps(config), retain=True,
+        )
 
         # Bridge status binary sensor
         uid = f"{dev}_bridge_status"
