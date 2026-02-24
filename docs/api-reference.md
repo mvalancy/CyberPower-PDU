@@ -720,75 +720,80 @@ Same data as `/api/history/outlets`, returned as a CSV file download.
 
 ## Report Endpoints
 
-The bridge generates weekly energy reports automatically (one per Monday-to-Sunday week). Reports include total kWh, per-outlet breakdown, daily breakdown, peak/average power, and household comparison (if configured).
+The bridge auto-generates weekly and monthly energy reports as PDF files. Reports are stored in the reports directory (default: `/data/reports`, host-mounted to `./reports/`). On-demand generation is also available via the web UI or API.
 
 ### GET /api/reports
 
-List all available reports.
+List all available PDF reports.
 
-**Query parameters:** `device_id` (optional)
-
-**Response (200):**
-
-```json
-[
-  {
-    "id": 3,
-    "week_start": "2026-02-10",
-    "week_end": "2026-02-17",
-    "created_at": "2026-02-17T01:00:00.000000",
-    "device_id": ""
-  }
-]
-```
-
----
-
-### GET /api/reports/latest
-
-Get the most recent report with full data.
-
-**Query parameters:** `device_id` (optional)
+**Query parameters:** `device_id` (optional) — filter by device
 
 **Response (200):**
 
 ```json
 {
-  "id": 3,
-  "week_start": "2026-02-10",
-  "week_end": "2026-02-17",
-  "created_at": "2026-02-17T01:00:00.000000",
-  "device_id": "",
-  "data": {
-    "week_start": "2026-02-10",
-    "week_end": "2026-02-17",
-    "total_kwh": 24.567,
-    "peak_power_w": 285.0,
-    "avg_power_w": 146.2,
-    "per_outlet": {
-      "1": {"kwh": 8.123, "avg_power": 48.3, "peak_power": 95.0},
-      "2": {"kwh": 5.432, "avg_power": 32.3, "peak_power": 60.0}
+  "reports": [
+    {
+      "filename": "pdu-rack-1_weekly_2026-02-16.pdf",
+      "device_id": "pdu-rack-1",
+      "report_type": "weekly",
+      "period": "2026-02-16",
+      "size_bytes": 36730,
+      "created": "2026-02-23 06:00"
     },
-    "daily": {
-      "2026-02-10": {"kwh": 3.456, "avg_power": 144.0, "peak_power": 280.0}
-    },
-    "house_pct": 2.8,
-    "sample_count": 604800
-  }
+    {
+      "filename": "pdu-rack-1_monthly_2026-01.pdf",
+      "device_id": "pdu-rack-1",
+      "report_type": "monthly",
+      "period": "2026-01",
+      "size_bytes": 42150,
+      "created": "2026-02-01 01:15"
+    }
+  ],
+  "count": 2
 }
 ```
 
-**Error: 404** if no reports exist yet.
+---
+
+### POST /api/reports/generate
+
+Generate a report on demand.
+
+**Request body:**
+
+```json
+{
+  "device_id": "pdu-rack-1",
+  "type": "weekly",
+  "period": "2026-02-16"
+}
+```
+
+- `type` — `"weekly"` or `"monthly"`
+- `period` — For weekly: Monday date as `YYYY-MM-DD`. For monthly: `YYYY-MM`. Omit for the most recent completed period.
+
+**Response (200):**
+
+```json
+{
+  "ok": true,
+  "path": "/data/reports/pdu-rack-1_weekly_2026-02-16.pdf",
+  "filename": "pdu-rack-1_weekly_2026-02-16.pdf"
+}
+```
+
+**Error (400):** `{"ok": false, "error": "No energy data for requested period"}`
 
 ---
 
-### GET /api/reports/{id}
+### GET /api/reports/download/{filename}
 
-Get a specific report by ID.
+Download a PDF report file.
 
-**Response (200):** Same format as `/api/reports/latest`.
+**Response (200):** PDF file with `Content-Disposition: attachment` header.
 
-**Error: 404** if report not found.
+**Error (404):** `{"error": "Report not found"}` — returned for missing files or path traversal attempts.
 
 ---
 

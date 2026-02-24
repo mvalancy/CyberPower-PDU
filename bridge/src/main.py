@@ -23,6 +23,7 @@ import logging
 import signal
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .automation import AutomationEngine
@@ -47,6 +48,12 @@ from .serial_client import SerialClient
 from .serial_transport import SerialTransport
 from .snmp_client import SNMPClient
 from .snmp_transport import SNMPTransport
+from .report_generator import (
+    generate_monthly_report,
+    generate_weekly_report,
+    get_report_path,
+    list_reports,
+)
 from .web import RingBufferHandler, WebServer
 
 logger = logging.getLogger("pdu_bridge")
@@ -143,6 +150,9 @@ class PDUPoller:
         # Default credential check result (None = unknown, True = at risk)
         self._default_creds_active: bool | None = None
         self._first_poll = True
+
+        # Daily rollup tracking
+        self._last_rollup_date: str = ""
 
         # Previous poll data for state-change detection (system events)
         self._prev_data: PDUData | None = None
@@ -741,6 +751,7 @@ class PDUPoller:
                 # Subsystem isolation: each subsystem call is independent
                 self._safe_publish(data)
                 self._safe_record(data)
+                self._check_daily_rollup()
                 self.web.update_data(data)
                 await self._safe_evaluate(data)
 
@@ -833,6 +844,18 @@ class PDUPoller:
             self._subsystem_errors["automation"] += 1
             if self._subsystem_errors["automation"] <= 3:
                 logger.exception("[%s] Automation evaluation error", self.device_id)
+
+    def _check_daily_rollup(self):
+        """Trigger daily/monthly energy rollups once per day."""
+        from datetime import datetime as dt
+        today = dt.now().strftime("%Y-%m-%d")
+        if today != self._last_rollup_date:
+            try:
+                self.history.compute_daily_rollups(device_id=self.device_id)
+                self.history.compute_monthly_rollups(device_id=self.device_id)
+            except Exception:
+                logger.exception("[%s] Energy rollup error", self.device_id)
+            self._last_rollup_date = today
 
     def get_status_detail(self) -> dict:
         """Return detailed status for this poller (exposed via API)."""
@@ -1018,6 +1041,10 @@ class BridgeManager:
         # EnergyWise
         self.web.set_management_callback("get_energywise", self._handle_get_energywise)
         self.web.set_management_callback("set_energywise", self._handle_set_energywise)
+
+        # Report generation callbacks
+        self.web.set_report_list_callback(self._handle_list_reports)
+        self.web.set_report_generate_callback(self._handle_generate_report)
 
         logger.info(
             "BridgeManager: %d PDU(s) configured, %d poller(s) active",
@@ -1474,14 +1501,119 @@ class BridgeManager:
                 return poller
         return None
 
+    # ------------------------------------------------------------------
+    # Report generation
+    # ------------------------------------------------------------------
+
     async def _report_scheduler(self):
-        """Hourly task to generate weekly reports and run cleanup."""
+        """Background task — auto-generate weekly (Monday) and monthly (1st) reports."""
+        await asyncio.sleep(60)  # Startup delay
         while self._running:
             try:
-                self.history.generate_weekly_report()
-                self.history.cleanup()
+                if not self.config.reports_enabled:
+                    await asyncio.sleep(3600)
+                    continue
+
+                now = datetime.now()
+                # Weekly: Monday, first 2 hours
+                if now.weekday() == 0 and now.hour < 2:
+                    for poller in self.pollers:
+                        self._generate_report_for_poller(poller, "weekly")
+
+                # Monthly: 1st of month, first 2 hours
+                if now.day == 1 and now.hour < 2:
+                    for poller in self.pollers:
+                        self._generate_report_for_poller(poller, "monthly")
+
             except Exception:
                 logger.exception("Error in report scheduler")
+
+            await asyncio.sleep(3600)
+
+    def _generate_report_for_poller(
+        self, poller: PDUPoller, report_type: str,
+        week_start: str | None = None, month: str | None = None,
+    ) -> str | None:
+        """Generate a report for a specific poller. Returns path or None."""
+        identity = poller._identity
+        device_name = identity.name if identity else "PDU"
+        model = identity.model if identity else ""
+        reports_dir = self.config.reports_dir
+
+        try:
+            if report_type == "weekly":
+                # Check idempotency — skip if file already exists
+                if week_start is None:
+                    today = datetime.now()
+                    start = today - timedelta(days=today.weekday() + 7)
+                    week_start = start.strftime("%Y-%m-%d")
+                safe_id = poller.device_id or "default"
+                expected = Path(reports_dir) / f"{safe_id}_weekly_{week_start}.pdf"
+                if expected.exists():
+                    return str(expected)
+                return generate_weekly_report(
+                    self.history, poller.device_id, device_name, model,
+                    week_start=week_start, reports_dir=reports_dir,
+                )
+            elif report_type == "monthly":
+                if month is None:
+                    today = datetime.now()
+                    prev = (today.replace(day=1) - timedelta(days=1))
+                    month = prev.strftime("%Y-%m")
+                safe_id = poller.device_id or "default"
+                expected = Path(reports_dir) / f"{safe_id}_monthly_{month}.pdf"
+                if expected.exists():
+                    return str(expected)
+                return generate_monthly_report(
+                    self.history, poller.device_id, device_name, model,
+                    month=month, reports_dir=reports_dir,
+                )
+        except Exception:
+            logger.exception(
+                "[%s] Failed to generate %s report", poller.device_id, report_type
+            )
+        return None
+
+    async def _handle_list_reports(self, device_id: str | None = None) -> list[dict]:
+        """List available PDF reports."""
+        return list_reports(self.config.reports_dir, device_id)
+
+    async def _handle_generate_report(self, body: dict) -> dict:
+        """On-demand report generation from web UI."""
+        device_id = body.get("device_id", "")
+        report_type = body.get("type", "weekly")
+        period = body.get("period")
+
+        poller = self._find_poller(device_id)
+        if not poller:
+            # Try first poller if only one
+            if len(self.pollers) == 1:
+                poller = self.pollers[0]
+            else:
+                return {"error": f"Unknown device: {device_id}"}
+
+        if report_type == "weekly":
+            path = self._generate_report_for_poller(
+                poller, "weekly", week_start=period,
+            )
+        elif report_type == "monthly":
+            path = self._generate_report_for_poller(
+                poller, "monthly", month=period,
+            )
+        else:
+            return {"error": f"Unknown report type: {report_type}"}
+
+        if path:
+            return {"ok": True, "path": path, "filename": Path(path).name}
+        return {"ok": False, "error": "No energy data for requested period"}
+
+    async def _maintenance_scheduler(self):
+        """Hourly task to run cleanup on old samples."""
+        while self._running:
+            try:
+                self.history.cleanup()
+            except Exception:
+                logger.exception("Error in maintenance scheduler")
             await asyncio.sleep(3600)
 
     async def run(self):
@@ -1497,8 +1629,12 @@ class BridgeManager:
         # Start web UI
         await self.web.start()
 
-        # Start report scheduler
-        asyncio.get_event_loop().create_task(self._report_scheduler())
+        # Start maintenance scheduler (cleanup)
+        asyncio.get_event_loop().create_task(self._maintenance_scheduler())
+
+        # Start report scheduler (weekly/monthly PDF generation)
+        if self.config.reports_enabled:
+            asyncio.get_event_loop().create_task(self._report_scheduler())
 
         # Launch pollers with staggered starts (~100ms apart)
         for i, poller in enumerate(self.pollers):

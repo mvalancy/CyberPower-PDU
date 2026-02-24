@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ src/
 COPY static/ static/
+COPY fonts/ fonts/
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1

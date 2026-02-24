@@ -54,7 +54,7 @@ This guide takes you from zero to a running dashboard in about five minutes. By 
 - 60 days of 1Hz samples in SQLite (WAL mode)
 - Auto-downsampling for fast chart rendering (1s to 30m resolution)
 - CSV export for banks and outlets
-- Weekly energy reports with per-outlet breakdown
+- Auto-generated weekly and monthly PDF energy reports with per-outlet breakdown
 
 ### Automation Engine
 - Voltage threshold rules (brownout protection)

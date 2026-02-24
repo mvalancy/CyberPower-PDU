@@ -57,6 +57,10 @@ class MockPDU:
         self._reboot_until: dict[int, float] = {}
         self._failed_banks: set[int] = set()
         self._active_input = 1
+        self._last_source_transfer = time.time()
+        self._source_transfer_interval = 1800  # ~30 minutes between transfers
+        self._cumulative_outlet_energy: dict[int, float] = {n: 0.0 for n in range(1, num_outlets + 1)}
+        self._last_energy_update = time.time()
         self._has_envirosensor = has_envirosensor
         self._voltage_sensitivity = "Normal"
         self._coldstart_delay = 0
@@ -161,23 +165,54 @@ class MockPDU:
                 if other != self._active_input and other not in self._failed_banks:
                     self._active_input = other
                     logger.info("Mock: ATS transferred to input %d", other)
+                    self._last_source_transfer = now
                     break
 
-        # Outlets
+        # Simulate periodic ATS source transfers (every ~30 min, with some randomness)
+        if (self._num_banks >= 2
+                and not self._failed_banks
+                and now - self._last_source_transfer >= self._source_transfer_interval):
+            old_input = self._active_input
+            self._active_input = 2 if self._active_input == 1 else 1
+            self._last_source_transfer = now
+            # Randomize next transfer interval (20-40 min)
+            self._source_transfer_interval = random.uniform(1200, 2400)
+            logger.info("Mock: Periodic ATS transfer %d -> %d", old_input, self._active_input)
+
+        # Time delta for energy accumulation
+        dt = now - self._last_energy_update
+        self._last_energy_update = now
+
+        # Outlets with realistic per-outlet power data
         outlets: dict[int, OutletData] = {}
         on_count = 0
         for n in range(1, self._num_outlets + 1):
             state_int = self._outlet_states[n]
             state_str = OUTLET_STATE_MAP.get(state_int, "unknown")
-            if state_int == OUTLET_STATE_ON:
-                on_count += 1
 
             bank_assignment = ((n - 1) % self._num_banks) + 1
+
+            if state_int == OUTLET_STATE_ON:
+                on_count += 1
+                # Simulate realistic per-outlet load with some variation
+                base_load = 0.1 + (n * 0.15)  # Different base load per outlet
+                outlet_current = base_load + random.uniform(-0.02, 0.02)
+                outlet_power = round(outlet_current * base_voltage, 1)
+                # Accumulate energy (kWh)
+                self._cumulative_outlet_energy[n] += outlet_power * dt / 3600.0 / 1000.0
+                outlet_energy = round(self._cumulative_outlet_energy[n], 3)
+            else:
+                outlet_current = 0.0
+                outlet_power = 0.0
+                outlet_energy = round(self._cumulative_outlet_energy.get(n, 0.0), 3)
 
             outlets[n] = OutletData(
                 number=n,
                 name=self._outlet_names[n],
                 state=state_str,
+                current=round(outlet_current, 2),
+                power=outlet_power,
+                energy=outlet_energy,
                 bank_assignment=bank_assignment,
                 max_load=12.0,
             )

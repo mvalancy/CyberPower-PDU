@@ -42,6 +42,8 @@ TestSerialCallback = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 ManagementCallback = Callable[..., Awaitable[Any]]
 PollerStatusCallback = Callable[[], list[dict[str, Any]]]
 SnmpConfigCallback = Callable[[float, int], Awaitable[None]]
+ReportListCallback = Callable[[str | None], Awaitable[list[dict[str, Any]]]]
+ReportGenerateCallback = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +177,10 @@ class WebServer:
 
         # SNMP config callback
         self._snmp_config_callback: SnmpConfigCallback | None = None
+
+        # Report callbacks
+        self._report_list_callback: ReportListCallback | None = None
+        self._report_generate_callback: ReportGenerateCallback | None = None
 
         self.outlet_names: dict[str, str] = {}
 
@@ -330,6 +336,14 @@ class WebServer:
         """Set callback for updating SNMP timeout/retries on all pollers."""
         self._snmp_config_callback = callback
 
+    def set_report_list_callback(self, callback: ReportListCallback):
+        """Set callback for listing available PDF reports."""
+        self._report_list_callback = callback
+
+    def set_report_generate_callback(self, callback: ReportGenerateCallback):
+        """Set callback for on-demand PDF report generation."""
+        self._report_generate_callback = callback
+
     def set_log_buffer(self, handler: RingBufferHandler):
         """Set the ring buffer handler for log viewing."""
         self._log_buffer = handler
@@ -390,10 +404,17 @@ class WebServer:
         self._app.router.add_get("/api/history/banks.csv", self._handle_history_banks_csv)
         self._app.router.add_get("/api/history/outlets.csv", self._handle_history_outlets_csv)
 
-        # Reports
+        # Energy rollups
+        self._app.router.add_get("/api/energy/daily", self._handle_energy_daily)
+        self._app.router.add_get("/api/energy/monthly", self._handle_energy_monthly)
+        self._app.router.add_get("/api/energy/daily.csv", self._handle_energy_daily_csv)
+        self._app.router.add_get("/api/energy/monthly.csv", self._handle_energy_monthly_csv)
+        self._app.router.add_get("/api/energy/summary", self._handle_energy_summary)
+
+        # PDF Reports
         self._app.router.add_get("/api/reports", self._handle_list_reports)
-        self._app.router.add_get("/api/reports/latest", self._handle_latest_report)
-        self._app.router.add_get("/api/reports/{id}", self._handle_get_report)
+        self._app.router.add_post("/api/reports/generate", self._handle_generate_report)
+        self._app.router.add_get("/api/reports/download/{filename}", self._handle_download_report)
 
         # Outlet naming
         self._app.router.add_put("/api/outlets/{n}/name", self._handle_rename_outlet)
@@ -779,6 +800,7 @@ class WebServer:
             "snmp_retries": cfg.snmp_retries if cfg else 1,
             "recovery_enabled": cfg.recovery_enabled if cfg else True,
             "session_timeout": cfg.session_timeout if cfg else 86400,
+            "reports_enabled": cfg.reports_enabled if cfg else True,
         }
         return self._json(config)
 
@@ -895,6 +917,14 @@ class WebServer:
             else:
                 cfg.recovery_enabled = str(val).lower() in ("true", "1", "yes")
             updated["recovery_enabled"] = cfg.recovery_enabled
+
+        if "reports_enabled" in body:
+            val = body["reports_enabled"]
+            if isinstance(val, bool):
+                cfg.reports_enabled = val
+            else:
+                cfg.reports_enabled = str(val).lower() in ("true", "1", "yes")
+            updated["reports_enabled"] = cfg.reports_enabled
 
         if "session_timeout" in body:
             val = body["session_timeout"]
@@ -1540,34 +1570,108 @@ class WebServer:
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    # --- Reports (multi-PDU aware) ---
+    # --- Energy Rollups (multi-PDU aware) ---
+
+    def _parse_date_range(self, request) -> tuple[str, str]:
+        """Parse start/end date query params (YYYY-MM-DD)."""
+        from datetime import datetime as dt, timedelta
+        now = dt.now()
+        start = request.query.get("start", (now - timedelta(days=30)).strftime("%Y-%m-%d"))
+        end = request.query.get("end", now.strftime("%Y-%m-%d"))
+        return start, end
+
+    def _parse_month_range(self, request) -> tuple[str, str]:
+        """Parse start/end month query params (YYYY-MM)."""
+        from datetime import datetime as dt, timedelta
+        now = dt.now()
+        start = request.query.get("start", (now - timedelta(days=365)).strftime("%Y-%m"))
+        end = request.query.get("end", now.strftime("%Y-%m"))
+        return start, end
+
+    async def _handle_energy_daily(self, request):
+        if not self._history:
+            return self._json({"error": "history not available"}, 503)
+        device_id = self._resolve_device_id(request) or ""
+        start, end = self._parse_date_range(request)
+        rows = self._history.query_energy_daily_all(start, end, device_id)
+        return self._json(rows)
+
+    async def _handle_energy_monthly(self, request):
+        if not self._history:
+            return self._json({"error": "history not available"}, 503)
+        device_id = self._resolve_device_id(request) or ""
+        start, end = self._parse_month_range(request)
+        rows = self._history.query_energy_monthly_all(start, end, device_id)
+        return self._json(rows)
+
+    async def _handle_energy_daily_csv(self, request):
+        if not self._history:
+            return self._json({"error": "history not available"}, 503)
+        device_id = self._resolve_device_id(request) or ""
+        start, end = self._parse_date_range(request)
+        rows = self._history.query_energy_daily_all(start, end, device_id)
+        return self._csv_response(
+            rows, "energy_daily.csv",
+            ["date", "device_id", "source", "outlet", "kwh", "peak_power_w", "avg_power_w", "samples"],
+        )
+
+    async def _handle_energy_monthly_csv(self, request):
+        if not self._history:
+            return self._json({"error": "history not available"}, 503)
+        device_id = self._resolve_device_id(request) or ""
+        start, end = self._parse_month_range(request)
+        rows = self._history.query_energy_monthly_all(start, end, device_id)
+        return self._csv_response(
+            rows, "energy_monthly.csv",
+            ["month", "device_id", "source", "outlet", "kwh", "peak_power_w", "avg_power_w", "days"],
+        )
+
+    async def _handle_energy_summary(self, request):
+        if not self._history:
+            return self._json({"error": "history not available"}, 503)
+        device_id = self._resolve_device_id(request) or ""
+        summary = self._history.get_energy_summary(device_id)
+        return self._json(summary)
+
+    # --- PDF Reports ---
 
     async def _handle_list_reports(self, request):
-        if not self._history:
-            return self._json({"error": "history not available"}, 503)
-        device_id = self._resolve_device_id(request)
-        return self._json(self._history.list_reports(device_id=device_id))
+        """GET /api/reports — list available PDF reports."""
+        if not self._report_list_callback:
+            return self._json({"error": "reports not available"}, 503)
+        device_id = request.query.get("device_id")
+        reports = await self._report_list_callback(device_id)
+        return self._json({"reports": reports, "count": len(reports)})
 
-    async def _handle_latest_report(self, request):
-        if not self._history:
-            return self._json({"error": "history not available"}, 503)
-        device_id = self._resolve_device_id(request)
-        report = self._history.get_latest_report(device_id=device_id)
-        if not report:
-            return self._json({"error": "no reports yet"}, 404)
-        return self._json(report)
-
-    async def _handle_get_report(self, request):
-        if not self._history:
-            return self._json({"error": "history not available"}, 503)
+    async def _handle_generate_report(self, request):
+        """POST /api/reports/generate — on-demand report generation."""
+        if not self._report_generate_callback:
+            return self._json({"error": "reports not available"}, 503)
         try:
-            report_id = int(request.match_info["id"])
-        except ValueError:
-            return self._json({"error": "invalid report id"}, 400)
-        report = self._history.get_report(report_id)
-        if not report:
-            return self._json({"error": "report not found"}, 404)
-        return self._json(report)
+            body = await request.json()
+        except Exception:
+            return self._json({"error": "invalid JSON body"}, 400)
+
+        result = await self._report_generate_callback(body)
+        if result.get("error"):
+            return self._json(result, 400)
+        return self._json(result)
+
+    async def _handle_download_report(self, request):
+        """GET /api/reports/download/{filename} — download a PDF report."""
+        from .report_generator import get_report_path
+        filename = request.match_info["filename"]
+        reports_dir = self._config.reports_dir if self._config else "/data/reports"
+        path = get_report_path(filename, reports_dir)
+        if not path:
+            return self._json({"error": "Report not found"}, 404)
+        return web.FileResponse(
+            path,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/pdf",
+            },
+        )
 
     # --- Outlet naming ---
 

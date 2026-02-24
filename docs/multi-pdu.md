@@ -298,4 +298,5 @@ In multi-PDU mode, each PDU gets its own:
 | Automation rules | `/data/rules.json` | `/data/rules_{device_id}.json` |
 | Outlet names | `/data/outlet_names.json` | `/data/outlet_names_{device_id}.json` |
 | History | Shared `history.db` with `device_id=''` | Shared `history.db` with `device_id` column |
-| Energy reports | Shared table, one per week | Shared table, one per week per device |
+| Energy rollups | Shared `energy_daily` / `energy_monthly` tables with `device_id` column |
+| PDF reports | `{device_id}_weekly_{date}.pdf` and `{device_id}_monthly_{month}.pdf` per device |

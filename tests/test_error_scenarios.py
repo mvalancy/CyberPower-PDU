@@ -909,7 +909,7 @@ class TestHistoryRecordErrors:
             "CREATE TABLE bank_samples ("
             "ts INTEGER, bank INTEGER, voltage REAL, current REAL, "
             "power REAL, apparent REAL, pf REAL, "
-            "device_id TEXT NOT NULL DEFAULT '')"
+            "device_id TEXT NOT NULL DEFAULT '', active_source INTEGER)"
         )
         store._conn.commit()
         store.record(data)
@@ -1000,83 +1000,82 @@ class TestHistoryCloseSafety:
         os.unlink(path)
 
 
-class TestHistoryCorruptReport:
-    """Test 16: get_report handles corrupt JSON in data column."""
+class TestHistoryEnergyRollupErrors:
+    """Test 16: energy rollup error handling."""
 
     def _make_store(self, **kwargs):
         tmp = tempfile.mktemp(suffix=".db")
         store = HistoryStore(tmp, **kwargs)
         return store, tmp
 
-    def test_corrupt_json_returns_empty_dict(self):
+    def test_rollup_no_data_is_noop(self):
+        """compute_daily_rollups with no samples produces no rows."""
+        store, path = self._make_store()
+        store.compute_daily_rollups(device_id="")
+        count = store._conn.execute("SELECT COUNT(*) as c FROM energy_daily").fetchone()["c"]
+        assert count == 0
+        store.close()
+        os.unlink(path)
+
+    def test_rollup_idempotent(self):
+        """Running compute_daily_rollups twice should not duplicate rows."""
+        from datetime import datetime, timedelta
         store, path = self._make_store()
 
-        # Insert a report with corrupt JSON in the data column
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        day_start = int(datetime.strptime(yesterday, "%Y-%m-%d").timestamp())
+
+        for i in range(10):
+            store._conn.execute(
+                "INSERT INTO bank_samples (ts, bank, voltage, current, power, apparent, pf, device_id, active_source) "
+                "VALUES (?, 1, 120.0, 1.0, 100.0, 110.0, 0.91, '', 1)",
+                (day_start + i,),
+            )
+        store._conn.commit()
+
+        store.compute_daily_rollups(device_id="")
+        count1 = store._conn.execute("SELECT COUNT(*) as c FROM energy_daily").fetchone()["c"]
+
+        store.compute_daily_rollups(device_id="")
+        count2 = store._conn.execute("SELECT COUNT(*) as c FROM energy_daily").fetchone()["c"]
+
+        assert count1 == count2
+        store.close()
+        os.unlink(path)
+
+    def test_monthly_rollup_recomputes_cleanly(self):
+        """compute_monthly_rollups should replace, not accumulate."""
+        from datetime import datetime
+        store, path = self._make_store()
+
+        now = datetime.now()
+        current_month = now.strftime("%Y-%m")
         store._conn.execute(
-            "INSERT INTO energy_reports (week_start, week_end, created_at, data) "
-            "VALUES (?, ?, ?, ?)",
-            ("2026-01-05", "2026-01-12", "2026-01-12T00:00:00", "not valid json{{{"),
+            "INSERT INTO energy_daily (date, device_id, source, outlet, kwh, peak_power_w, avg_power_w, samples) "
+            "VALUES (?, '', NULL, NULL, 5.0, 500.0, 250.0, 3600)",
+            (f"{current_month}-01",),
         )
         store._conn.commit()
 
-        report = store.get_report(1)
-        assert report is not None
-        assert report["data"] == {}
-        assert report["week_start"] == "2026-01-05"
+        store.compute_monthly_rollups(device_id="")
+        store.compute_monthly_rollups(device_id="")
+
+        rows = store._conn.execute(
+            "SELECT * FROM energy_monthly WHERE month = ? AND source IS NULL AND outlet IS NULL",
+            (current_month,),
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["kwh"] == pytest.approx(5.0, abs=0.01)
 
         store.close()
         os.unlink(path)
 
-    def test_empty_string_data_returns_empty_dict(self):
-        """Empty string in data column is treated as corrupt JSON."""
+    def test_energy_summary_empty_db(self):
+        """get_energy_summary on empty DB returns all zeros."""
         store, path = self._make_store()
-
-        store._conn.execute(
-            "INSERT INTO energy_reports (week_start, week_end, created_at, data) "
-            "VALUES (?, ?, ?, ?)",
-            ("2026-01-05", "2026-01-12", "2026-01-12T00:00:00", ""),
-        )
-        store._conn.commit()
-
-        report = store.get_report(1)
-        assert report is not None
-        assert report["data"] == {}
-
-        store.close()
-        os.unlink(path)
-
-    def test_get_latest_report_corrupt_json(self):
-        store, path = self._make_store()
-
-        store._conn.execute(
-            "INSERT INTO energy_reports (week_start, week_end, created_at, data) "
-            "VALUES (?, ?, ?, ?)",
-            ("2026-02-02", "2026-02-09", "2026-02-09T00:00:00", "{broken json"),
-        )
-        store._conn.commit()
-
-        latest = store.get_latest_report()
-        assert latest is not None
-        assert latest["data"] == {}
-
-        store.close()
-        os.unlink(path)
-
-    def test_valid_json_parses_correctly(self):
-        store, path = self._make_store()
-
-        valid_data = {"total_kwh": 42.5, "peak_power_w": 500.0}
-        store._conn.execute(
-            "INSERT INTO energy_reports (week_start, week_end, created_at, data) "
-            "VALUES (?, ?, ?, ?)",
-            ("2026-01-05", "2026-01-12", "2026-01-12T00:00:00", json.dumps(valid_data)),
-        )
-        store._conn.commit()
-
-        report = store.get_report(1)
-        assert report["data"]["total_kwh"] == 42.5
-        assert report["data"]["peak_power_w"] == 500.0
-
+        summary = store.get_energy_summary(device_id="")
+        assert summary["today"]["total_kwh"] == 0
+        assert summary["this_month"]["total_kwh"] == 0
         store.close()
         os.unlink(path)
 

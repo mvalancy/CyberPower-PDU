@@ -116,6 +116,21 @@ A visual walkthrough of every feature in the CyberPower PDU Bridge.
 - Data retention and storage information
 - Tips and keyboard shortcuts
 
+## Energy Reports (PDF)
+
+![Sample Report](screenshots/sample-report.png)
+
+- Auto-generated **weekly** (every Monday) and **monthly** (1st of month) PDF energy reports
+- Dark cyberpunk theme matching the web dashboard (Inter + JetBrains Mono fonts)
+- **Energy summary cards** — total kWh, Source A, Source B, peak power with % change vs prior period
+- **Daily breakdown** table and horizontal bar chart
+- **Per-outlet breakdown** sorted by consumption with percentage of total
+- **Source A vs B** daily comparison table for bill splitting
+- On-demand generation from the web UI (click Weekly or Monthly)
+- Reports stored on a host-accessible volume mount (`./reports/`) for easy backup
+- Downloadable directly from the dashboard as PDF files
+- Configurable via `BRIDGE_REPORTS_ENABLED` and `BRIDGE_REPORTS_DIR` environment variables
+
 ## Home Assistant Integration
 
 - MQTT auto-discovery — switches, sensors, and binary sensors appear automatically

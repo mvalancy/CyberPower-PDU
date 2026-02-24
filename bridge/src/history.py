@@ -3,7 +3,7 @@
 # Copyright 2026 GPL-3.0 License
 # https://github.com/mvalancy/CyberPower-PDU
 
-"""SQLite history storage with 1Hz sample recording and weekly reports."""
+"""SQLite history storage with 1Hz sample recording and energy rollups."""
 
 import json
 import logging
@@ -36,6 +36,7 @@ class HistoryStore:
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._create_tables()
         self._migrate_device_id()
+        self._migrate_active_source()
         self._create_indexes()
 
     @property
@@ -56,7 +57,8 @@ class HistoryStore:
                 power REAL,
                 apparent REAL,
                 pf REAL,
-                device_id TEXT NOT NULL DEFAULT ''
+                device_id TEXT NOT NULL DEFAULT '',
+                active_source INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS outlet_samples (
@@ -66,7 +68,8 @@ class HistoryStore:
                 current REAL,
                 power REAL,
                 energy REAL,
-                device_id TEXT NOT NULL DEFAULT ''
+                device_id TEXT NOT NULL DEFAULT '',
+                active_source INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS energy_reports (
@@ -88,6 +91,28 @@ class HistoryStore:
                 contact_4 INTEGER,
                 device_id TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS energy_daily (
+                date TEXT NOT NULL,
+                device_id TEXT NOT NULL DEFAULT '',
+                source INTEGER,
+                outlet INTEGER,
+                kwh REAL NOT NULL,
+                peak_power_w REAL,
+                avg_power_w REAL,
+                samples INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS energy_monthly (
+                month TEXT NOT NULL,
+                device_id TEXT NOT NULL DEFAULT '',
+                source INTEGER,
+                outlet INTEGER,
+                kwh REAL NOT NULL,
+                peak_power_w REAL,
+                avg_power_w REAL,
+                days INTEGER NOT NULL
+            );
         """)
         self._conn.commit()
 
@@ -99,6 +124,10 @@ class HistoryStore:
             CREATE INDEX IF NOT EXISTS idx_env_ts ON environment_samples(ts);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_report_week
                 ON energy_reports(week_start, device_id);
+            CREATE INDEX IF NOT EXISTS idx_energy_daily_lookup
+                ON energy_daily(date, device_id);
+            CREATE INDEX IF NOT EXISTS idx_energy_monthly_lookup
+                ON energy_monthly(month, device_id);
         """)
         self._conn.commit()
 
@@ -143,6 +172,17 @@ class HistoryStore:
         except sqlite3.OperationalError:
             pass
 
+    def _migrate_active_source(self):
+        """Idempotent migration: add active_source column to sample tables."""
+        for table in ("bank_samples", "outlet_samples"):
+            try:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN active_source INTEGER"
+                )
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
     def get_health(self) -> dict:
         """Return history storage health metrics."""
         return {
@@ -160,25 +200,26 @@ class HistoryStore:
         """Write every poll sample directly to SQLite at 1Hz."""
         self._total_writes += 1
         now = int(time.time())
+        source = data.ats_current_source  # 1=A, 2=B, or None
 
         try:
             for idx, bank in data.banks.items():
                 self._conn.execute(
                     "INSERT INTO bank_samples "
-                    "(ts, bank, voltage, current, power, apparent, pf, device_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "(ts, bank, voltage, current, power, apparent, pf, device_id, active_source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (now, idx, bank.voltage, bank.current,
                      bank.power, bank.apparent_power, bank.power_factor,
-                     device_id),
+                     device_id, source),
                 )
 
             for n, outlet in data.outlets.items():
                 self._conn.execute(
                     "INSERT INTO outlet_samples "
-                    "(ts, outlet, state, current, power, energy, device_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(ts, outlet, state, current, power, energy, device_id, active_source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (now, n, outlet.state, outlet.current,
-                     outlet.power, outlet.energy, device_id),
+                     outlet.power, outlet.energy, device_id, source),
                 )
 
             # Environment samples (only when sensor present)
@@ -327,180 +368,317 @@ class HistoryStore:
         except sqlite3.Error:
             logger.exception("History cleanup failed")
 
-    # --- Reports ---
+    # --- Energy Rollups ---
 
-    def generate_weekly_report(self, device_id: str = "") -> dict | None:
-        """Generate report for the most recent complete Mon-Sun week, if missing."""
-        now = datetime.now()
-        # Find last Monday
-        days_since_monday = now.weekday()
-        if days_since_monday == 0 and now.hour < 1:
-            # It's Monday early AM, report for week before last
-            last_monday = now - timedelta(days=7 + days_since_monday)
-        else:
-            last_monday = now - timedelta(days=days_since_monday)
-        # Go back one more week for the *complete* week
-        week_end = last_monday.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = week_end - timedelta(days=7)
+    def compute_daily_rollups(self, device_id: str = ""):
+        """Compute daily energy rollups from raw 1Hz samples for any missing days."""
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        week_start_str = week_start.strftime("%Y-%m-%d")
-        week_end_str = week_end.strftime("%Y-%m-%d")
-
-        # Check if already generated (per device_id)
+        # Check if yesterday already computed
         existing = self._conn.execute(
-            "SELECT id FROM energy_reports "
-            "WHERE week_start = ? AND device_id = ?",
-            (week_start_str, device_id),
+            "SELECT 1 FROM energy_daily WHERE date = ? AND device_id = ? LIMIT 1",
+            (yesterday, device_id),
         ).fetchone()
         if existing:
-            return None
+            return
 
-        start_ts = week_start.timestamp()
-        end_ts = week_end.timestamp()
+        # Timestamp range for yesterday
+        day_start = datetime.strptime(yesterday, "%Y-%m-%d")
+        start_ts = int(day_start.timestamp())
+        end_ts = start_ts + 86400
 
-        # Query bank data for total power (filtered by device_id)
+        # --- Bank-level rollup (total power across all banks, by source) ---
         bank_rows = self._conn.execute(
-            "SELECT ts, bank, power, voltage, current FROM bank_samples "
-            "WHERE ts >= ? AND ts < ? AND device_id = ? ORDER BY ts",
-            (int(start_ts), int(end_ts), device_id),
+            "SELECT ts, active_source, SUM(power) as total_power "
+            "FROM bank_samples "
+            "WHERE ts >= ? AND ts < ? AND device_id = ? AND power IS NOT NULL "
+            "GROUP BY ts, active_source",
+            (start_ts, end_ts, device_id),
         ).fetchall()
 
-        # Query outlet data (filtered by device_id)
+        if not bank_rows:
+            return  # No data for yesterday
+
+        # Group by source
+        source_powers: dict[int | None, list[float]] = {}
+        all_powers: list[float] = []
+        for row in bank_rows:
+            p = row["total_power"]
+            src = row["active_source"]
+            source_powers.setdefault(src, []).append(p)
+            all_powers.append(p)
+
+        # Insert total row (source=NULL, outlet=NULL)
+        if all_powers:
+            self._conn.execute(
+                "INSERT INTO energy_daily (date, device_id, source, outlet, kwh, peak_power_w, avg_power_w, samples) "
+                "VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)",
+                (yesterday, device_id,
+                 round(sum(all_powers) / 3600.0 / 1000.0, 6),
+                 round(max(all_powers), 1),
+                 round(sum(all_powers) / len(all_powers), 1),
+                 len(all_powers)),
+            )
+
+        # Insert per-source rows (source=1 or 2, outlet=NULL)
+        for src, powers in source_powers.items():
+            if src is not None:
+                self._conn.execute(
+                    "INSERT INTO energy_daily (date, device_id, source, outlet, kwh, peak_power_w, avg_power_w, samples) "
+                    "VALUES (?, ?, ?, NULL, ?, ?, ?, ?)",
+                    (yesterday, device_id, src,
+                     round(sum(powers) / 3600.0 / 1000.0, 6),
+                     round(max(powers), 1),
+                     round(sum(powers) / len(powers), 1),
+                     len(powers)),
+                )
+
+        # --- Per-outlet rollup (by outlet and source) ---
         outlet_rows = self._conn.execute(
-            "SELECT ts, outlet, power, energy, state FROM outlet_samples "
-            "WHERE ts >= ? AND ts < ? AND device_id = ? ORDER BY ts",
-            (int(start_ts), int(end_ts), device_id),
+            "SELECT outlet, active_source, "
+            "COUNT(*) as cnt, SUM(power) as sum_power, "
+            "MAX(power) as max_power, AVG(power) as avg_power "
+            "FROM outlet_samples "
+            "WHERE ts >= ? AND ts < ? AND device_id = ? AND power IS NOT NULL "
+            "GROUP BY outlet, active_source",
+            (start_ts, end_ts, device_id),
         ).fetchall()
 
-        if not bank_rows and not outlet_rows:
-            return None  # No data for this week
+        # Collect per-outlet totals for the total row
+        outlet_totals: dict[int, dict] = {}
+        for row in outlet_rows:
+            o = row["outlet"]
+            if o not in outlet_totals:
+                outlet_totals[o] = {"sum_power": 0, "max_power": 0, "cnt": 0, "powers_for_avg": []}
+            outlet_totals[o]["sum_power"] += row["sum_power"]
+            outlet_totals[o]["max_power"] = max(outlet_totals[o]["max_power"], row["max_power"] or 0)
+            outlet_totals[o]["cnt"] += row["cnt"]
+            outlet_totals[o]["powers_for_avg"].append((row["avg_power"] or 0, row["cnt"]))
 
-        # Compute total kWh from 1Hz power samples
-        # Each sample covers 1 second = 1/3600 hour
-        total_power_samples = {}
-        for r in bank_rows:
-            ts = r["ts"]
-            total_power_samples.setdefault(ts, 0)
-            if r["power"] is not None:
-                total_power_samples[ts] += r["power"]
+            # Per-outlet per-source row
+            src = row["active_source"]
+            if src is not None:
+                self._conn.execute(
+                    "INSERT INTO energy_daily (date, device_id, source, outlet, kwh, peak_power_w, avg_power_w, samples) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (yesterday, device_id, src, o,
+                     round(row["sum_power"] / 3600.0 / 1000.0, 6),
+                     round(row["max_power"] or 0, 1),
+                     round(row["avg_power"] or 0, 1),
+                     row["cnt"]),
+                )
 
-        total_kwh = sum(total_power_samples.values()) / 3600.0 / 1000.0
+        # Per-outlet total rows (source=NULL)
+        for o, totals in outlet_totals.items():
+            weighted_avg = sum(a * c for a, c in totals["powers_for_avg"]) / totals["cnt"] if totals["cnt"] else 0
+            self._conn.execute(
+                "INSERT INTO energy_daily (date, device_id, source, outlet, kwh, peak_power_w, avg_power_w, samples) "
+                "VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+                (yesterday, device_id, o,
+                 round(totals["sum_power"] / 3600.0 / 1000.0, 6),
+                 round(totals["max_power"], 1),
+                 round(weighted_avg, 1),
+                 totals["cnt"]),
+            )
 
-        # Peak and average power
-        power_vals = [v for v in total_power_samples.values() if v > 0]
-        peak_power = max(power_vals) if power_vals else 0
-        avg_power = sum(power_vals) / len(power_vals) if power_vals else 0
-
-        # Per-outlet breakdown
-        outlet_energy: dict[int, dict] = {}
-        for r in outlet_rows:
-            o = r["outlet"]
-            if o not in outlet_energy:
-                outlet_energy[o] = {"powers": [], "first_energy": None, "last_energy": None}
-            if r["power"] is not None:
-                outlet_energy[o]["powers"].append(r["power"])
-            if r["energy"] is not None:
-                if outlet_energy[o]["first_energy"] is None:
-                    outlet_energy[o]["first_energy"] = r["energy"]
-                outlet_energy[o]["last_energy"] = r["energy"]
-
-        per_outlet = {}
-        for o, info in outlet_energy.items():
-            # Estimate kWh from 1Hz power samples
-            kwh = sum(info["powers"]) / 3600.0 / 1000.0 if info["powers"] else 0
-            per_outlet[str(o)] = {
-                "kwh": round(kwh, 3),
-                "avg_power": round(sum(info["powers"]) / len(info["powers"]), 1) if info["powers"] else 0,
-                "peak_power": round(max(info["powers"]), 1) if info["powers"] else 0,
-            }
-
-        # Daily breakdown
-        daily = {}
-        for ts, power in total_power_samples.items():
-            day = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            daily.setdefault(day, []).append(power)
-        daily_breakdown = {}
-        for day, powers in sorted(daily.items()):
-            daily_breakdown[day] = {
-                "kwh": round(sum(powers) / 3600.0 / 1000.0, 3),
-                "avg_power": round(sum(powers) / len(powers), 1),
-                "peak_power": round(max(powers), 1),
-            }
-
-        # House comparison
-        house_pct = None
-        if self._house_monthly_kwh > 0:
-            weekly_house = self._house_monthly_kwh * 7 / 30
-            house_pct = round(total_kwh / weekly_house * 100, 1) if weekly_house > 0 else None
-
-        report_data = {
-            "week_start": week_start_str,
-            "week_end": week_end_str,
-            "device_id": device_id,
-            "total_kwh": round(total_kwh, 3),
-            "peak_power_w": round(peak_power, 1),
-            "avg_power_w": round(avg_power, 1),
-            "per_outlet": per_outlet,
-            "daily": daily_breakdown,
-            "house_pct": house_pct,
-            "sample_count": len(total_power_samples),
-        }
-
-        self._conn.execute(
-            "INSERT INTO energy_reports "
-            "(week_start, week_end, created_at, data, device_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (week_start_str, week_end_str,
-             datetime.now().isoformat(), json.dumps(report_data),
-             device_id),
-        )
         self._conn.commit()
-        logger.info("Generated weekly report for %s to %s (device=%s): %.1f kWh",
-                     week_start_str, week_end_str, device_id or "(default)", total_kwh)
-        return report_data
+        total_kwh = sum(all_powers) / 3600.0 / 1000.0 if all_powers else 0
+        logger.info(
+            "Computed daily rollup for %s (device=%s): %.3f kWh, %d samples",
+            yesterday, device_id or "(default)", total_kwh, len(all_powers),
+        )
 
-    def list_reports(self, device_id: str | None = None) -> list[dict]:
-        if device_id is not None:
+    def compute_monthly_rollups(self, device_id: str = ""):
+        """Recompute current and previous month from energy_daily."""
+        now = datetime.now()
+        current_month = now.strftime("%Y-%m")
+        prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+        for month in (current_month, prev_month):
+            # Delete existing rows for this month to recompute
+            self._conn.execute(
+                "DELETE FROM energy_monthly WHERE month = ? AND device_id = ?",
+                (month, device_id),
+            )
+
+            # Aggregate from energy_daily
             rows = self._conn.execute(
-                "SELECT id, week_start, week_end, created_at, device_id "
-                "FROM energy_reports WHERE device_id = ? "
-                "ORDER BY week_start DESC",
-                (device_id,),
+                "SELECT source, outlet, "
+                "SUM(kwh) as total_kwh, MAX(peak_power_w) as peak_power, "
+                "AVG(avg_power_w) as avg_power, COUNT(*) as day_count "
+                "FROM energy_daily "
+                "WHERE date LIKE ? AND device_id = ? "
+                "GROUP BY source, outlet",
+                (month + "%", device_id),
             ).fetchall()
+
+            for row in rows:
+                self._conn.execute(
+                    "INSERT INTO energy_monthly (month, device_id, source, outlet, kwh, peak_power_w, avg_power_w, days) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (month, device_id, row["source"], row["outlet"],
+                     round(row["total_kwh"], 6),
+                     round(row["peak_power"] or 0, 1),
+                     round(row["avg_power"] or 0, 1),
+                     row["day_count"]),
+                )
+
+        self._conn.commit()
+
+    # --- Energy Query Methods ---
+
+    def query_energy_daily(self, start_date: str, end_date: str,
+                           device_id: str = "",
+                           source: int | None = None,
+                           outlet: int | None = None) -> list[dict]:
+        """Query daily energy rollups for a date range."""
+        sql = "SELECT * FROM energy_daily WHERE date >= ? AND date <= ? AND device_id = ?"
+        params: list[Any] = [start_date, end_date, device_id]
+
+        if source is not None:
+            sql += " AND source = ?"
+            params.append(source)
         else:
-            rows = self._conn.execute(
-                "SELECT id, week_start, week_end, created_at, device_id "
-                "FROM energy_reports ORDER BY week_start DESC",
-            ).fetchall()
+            sql += " AND source IS NULL"
+
+        if outlet is not None:
+            sql += " AND outlet = ?"
+            params.append(outlet)
+        else:
+            sql += " AND outlet IS NULL"
+
+        sql += " ORDER BY date"
+        rows = self._conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def get_report(self, report_id: int) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM energy_reports WHERE id = ?", (report_id,),
-        ).fetchone()
-        if not row:
-            return None
-        result = dict(row)
-        try:
-            result["data"] = json.loads(result["data"])
-        except (json.JSONDecodeError, TypeError):
-            logger.error("Corrupt report data for id=%d", report_id)
-            result["data"] = {}
-        return result
+    def query_energy_daily_all(self, start_date: str, end_date: str,
+                               device_id: str = "") -> list[dict]:
+        """Query all daily energy rollup rows (all sources/outlets) for a date range."""
+        sql = (
+            "SELECT * FROM energy_daily "
+            "WHERE date >= ? AND date <= ? AND device_id = ? "
+            "ORDER BY date, source, outlet"
+        )
+        rows = self._conn.execute(sql, (start_date, end_date, device_id)).fetchall()
+        return [dict(r) for r in rows]
 
-    def get_latest_report(self) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM energy_reports ORDER BY week_start DESC LIMIT 1",
-        ).fetchone()
-        if not row:
-            return None
-        result = dict(row)
-        try:
-            result["data"] = json.loads(result["data"])
-        except (json.JSONDecodeError, TypeError):
-            logger.error("Corrupt report data for latest report")
-            result["data"] = {}
-        return result
+    def query_energy_monthly(self, start_month: str, end_month: str,
+                             device_id: str = "",
+                             source: int | None = None,
+                             outlet: int | None = None) -> list[dict]:
+        """Query monthly energy rollups for a month range."""
+        sql = "SELECT * FROM energy_monthly WHERE month >= ? AND month <= ? AND device_id = ?"
+        params: list[Any] = [start_month, end_month, device_id]
+
+        if source is not None:
+            sql += " AND source = ?"
+            params.append(source)
+        else:
+            sql += " AND source IS NULL"
+
+        if outlet is not None:
+            sql += " AND outlet = ?"
+            params.append(outlet)
+        else:
+            sql += " AND outlet IS NULL"
+
+        sql += " ORDER BY month"
+        rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def query_energy_monthly_all(self, start_month: str, end_month: str,
+                                 device_id: str = "") -> list[dict]:
+        """Query all monthly energy rollup rows for a month range."""
+        sql = (
+            "SELECT * FROM energy_monthly "
+            "WHERE month >= ? AND month <= ? AND device_id = ? "
+            "ORDER BY month, source, outlet"
+        )
+        rows = self._conn.execute(sql, (start_month, end_month, device_id)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_energy_summary(self, device_id: str = "") -> dict:
+        """Get energy summary: today, this week, this month, all time."""
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        # Start of week (Monday)
+        week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        current_month = now.strftime("%Y-%m")
+
+        def _sum_kwh(rows, source_filter=None):
+            total = 0.0
+            for r in rows:
+                if source_filter is not None and r["source"] != source_filter:
+                    continue
+                if source_filter is None and r["source"] is not None:
+                    continue  # Only use total rows
+                total += r["kwh"]
+            return round(total, 3)
+
+        def _sum_kwh_by_source(rows, source_val):
+            total = 0.0
+            for r in rows:
+                if r["source"] == source_val and r["outlet"] is None:
+                    total += r["kwh"]
+            return round(total, 3)
+
+        # Today: compute from live 1Hz data
+        today_start_ts = int(datetime.strptime(today, "%Y-%m-%d").timestamp())
+        today_end_ts = today_start_ts + 86400
+
+        today_banks = self._conn.execute(
+            "SELECT active_source, SUM(power) as total_power "
+            "FROM bank_samples "
+            "WHERE ts >= ? AND ts < ? AND device_id = ? AND power IS NOT NULL "
+            "GROUP BY ts, active_source",
+            (today_start_ts, today_end_ts, device_id),
+        ).fetchall()
+
+        today_total = sum(r["total_power"] for r in today_banks) / 3600.0 / 1000.0 if today_banks else 0
+        today_a = sum(r["total_power"] for r in today_banks if r["active_source"] == 1) / 3600.0 / 1000.0 if today_banks else 0
+        today_b = sum(r["total_power"] for r in today_banks if r["active_source"] == 2) / 3600.0 / 1000.0 if today_banks else 0
+
+        # This week: from energy_daily
+        week_daily = self.query_energy_daily_all(week_start, today, device_id)
+        week_total = _sum_kwh(week_daily)
+        week_a = _sum_kwh_by_source(week_daily, 1)
+        week_b = _sum_kwh_by_source(week_daily, 2)
+        # Add today's live data
+        week_total = round(week_total + today_total, 3)
+        week_a = round(week_a + today_a, 3)
+        week_b = round(week_b + today_b, 3)
+
+        # This month: from energy_daily (not monthly, since month is incomplete)
+        month_start = now.replace(day=1).strftime("%Y-%m-%d")
+        month_daily = self.query_energy_daily_all(month_start, today, device_id)
+        month_total = _sum_kwh(month_daily)
+        month_a = _sum_kwh_by_source(month_daily, 1)
+        month_b = _sum_kwh_by_source(month_daily, 2)
+        month_total = round(month_total + today_total, 3)
+        month_a = round(month_a + today_a, 3)
+        month_b = round(month_b + today_b, 3)
+
+        # All time: from energy_monthly + current incomplete month
+        all_monthly = self._conn.execute(
+            "SELECT source, outlet, SUM(kwh) as total "
+            "FROM energy_monthly WHERE device_id = ? AND month < ? "
+            "GROUP BY source, outlet",
+            (device_id, current_month),
+        ).fetchall()
+        all_total = sum(r["total"] for r in all_monthly if r["source"] is None and r["outlet"] is None)
+        all_a = sum(r["total"] for r in all_monthly if r["source"] == 1 and r["outlet"] is None)
+        all_b = sum(r["total"] for r in all_monthly if r["source"] == 2 and r["outlet"] is None)
+        # Add current month
+        all_total = round(all_total + month_total, 3)
+        all_a = round(all_a + month_a, 3)
+        all_b = round(all_b + month_b, 3)
+
+        return {
+            "today": {"total_kwh": round(today_total, 3), "source_a_kwh": round(today_a, 3), "source_b_kwh": round(today_b, 3)},
+            "this_week": {"total_kwh": week_total, "source_a_kwh": week_a, "source_b_kwh": week_b},
+            "this_month": {"total_kwh": month_total, "source_a_kwh": month_a, "source_b_kwh": month_b},
+            "all_time": {"total_kwh": all_total, "source_a_kwh": all_a, "source_b_kwh": all_b},
+        }
 
     def close(self):
         try:

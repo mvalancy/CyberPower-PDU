@@ -110,15 +110,18 @@ These control how the bridge itself behaves.
 
 ## History and Reports Settings
 
-These control the SQLite history database and energy reports.
+These control the SQLite history database and PDF energy reports.
 
 | Variable | Default | Range | Description |
 |----------|---------|-------|-------------|
 | `HISTORY_RETENTION_DAYS` | `60` | 1 - 365 | How many days of 1Hz history to keep. Older data is automatically deleted hourly. |
-| `HOUSE_MONTHLY_KWH` | `0` | 0 - 100,000 | Your household's monthly electricity usage in kWh. If set, weekly energy reports will include a percentage comparison showing how much of your household electricity the PDU consumes. Set to `0` to disable. |
+| `HOUSE_MONTHLY_KWH` | `0` | 0 - 100,000 | Your household's monthly electricity usage in kWh. Set to `0` to disable. |
 | `BRIDGE_HISTORY_DB` | `/data/history.db` | file path | Path to the SQLite database file (inside the container). |
+| `BRIDGE_REPORTS_ENABLED` | `true` | `true` / `false` | Enable or disable automatic PDF report generation. |
+| `BRIDGE_REPORTS_DIR` | `/data/reports` | directory path | Where generated PDF reports are stored (inside the container). |
+| `BRIDGE_REPORTS_PATH` | `./reports` | host path | Host directory bind-mounted to `/data/reports` in Docker. Reports are directly accessible here for backup or file sharing. |
 
-**Storage estimate:** At 1Hz with 2 banks and 10 outlets, the database grows by roughly 50-100 MB per month. With the default 60-day retention, expect the database to stabilize around 100-200 MB.
+**Storage estimate:** At 1Hz with 2 banks and 10 outlets, the database grows by roughly 50-100 MB per month. With the default 60-day retention, expect the database to stabilize around 100-200 MB. PDF reports are ~30-50 KB each and are never automatically deleted.
 
 ---
 

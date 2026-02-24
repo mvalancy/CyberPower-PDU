@@ -60,6 +60,7 @@ services:
         condition: service_healthy
     volumes:
       - bridge-data:/data
+      - ${BRIDGE_REPORTS_PATH:-./reports}:/data/reports
       - /dev/serial:/dev/serial:ro
     device_cgroup_rules:
       - 'c 188:* rwm'

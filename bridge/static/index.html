@@ -946,14 +946,42 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
     </div>
   </div>
 
-  <!-- Energy Reports -->
+  <!-- Energy Usage -->
   <div class="section">
     <div class="section-head">
-      <span class="section-title">Energy Report</span>
+      <span class="section-title">Energy Usage</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="energy-period" onchange="loadEnergy()" class="input" style="width:auto;font-size:11px;padding:3px 8px">
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month" selected>This Month</option>
+          <option value="custom">Custom Range</option>
+        </select>
+        <input type="date" id="energy-start" class="input" style="width:auto;font-size:11px;padding:3px 6px;display:none" onchange="loadEnergy()">
+        <input type="date" id="energy-end" class="input" style="width:auto;font-size:11px;padding:3px 6px;display:none" onchange="loadEnergy()">
+        <button class="btn btn-sm" onclick="downloadEnergyCSV('daily')" title="Download Daily CSV" style="font-size:11px;padding:3px 8px">Daily CSV</button>
+        <button class="btn btn-sm" onclick="downloadEnergyCSV('monthly')" title="Download Monthly CSV" style="font-size:11px;padding:3px 8px">Monthly CSV</button>
+      </div>
     </div>
     <div class="card">
-      <div class="card-body" id="report-content">
-        <div class="report-empty">No reports generated yet. Reports are generated weekly.</div>
+      <div class="card-body" id="energy-content">
+        <div class="report-empty">Loading energy data...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF Reports -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Reports</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="generateReport('weekly')" title="Generate weekly report">Weekly</button>
+        <button class="btn btn-sm" onclick="generateReport('monthly')" title="Generate monthly report">Monthly</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="reports-list" style="font-size:13px">
+        <div class="events-empty">No reports generated yet</div>
       </div>
     </div>
   </div>
@@ -1488,7 +1516,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
           <p><strong>Outlet Tiles</strong> &mdash; Each outlet shows its state (ON/OFF), name, and power draw. Green = ON, Red = OFF. Click to control.</p>
           <p><strong>History Charts</strong> &mdash; Power, voltage, and current graphs over time. Use the range buttons (1H, 6H, 24H, 7D, 30D) to zoom in/out. Export data with the CSV button.</p>
           <p><strong>Automation Rules</strong> &mdash; Define rules to automatically turn outlets on/off based on voltage levels, ATS state, or time of day. Rules have configurable delays and can auto-restore.</p>
-          <p><strong>Energy Report</strong> &mdash; Weekly summary of total energy usage, peak power, and per-outlet breakdown.</p>
+          <p><strong>Energy Usage</strong> &mdash; Per-source energy tracking with daily/monthly rollups, per-outlet breakdown, and CSV export for bill splitting.</p>
         </div>
       </div>
       <div class="help-section">
@@ -1670,7 +1698,7 @@ function switchPDU(deviceId) {
   currentDeviceId = deviceId;
   poll();
   loadCharts();
-  loadReport();
+  loadEnergy();
 }
 
 function formatUptime(hundredths) {
@@ -2283,6 +2311,53 @@ async function toggleRule(name, enabled) {
   } catch (e) { showToast('Toggle error: ' + e.message, 'error'); }
 }
 
+// --- PDF Reports ---
+async function loadReports() {
+  try {
+    const did = getSelectedDevice();
+    const url = '/api/reports' + (did ? `?device_id=${did}` : '');
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const data = await r.json();
+    const el = document.getElementById('reports-list');
+    if (!data.reports || !data.reports.length) {
+      el.innerHTML = '<div class="events-empty">No reports generated yet. Click Weekly or Monthly to generate a report.</div>';
+      return;
+    }
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+      '<tr style="color:var(--text-3);font-size:11px;text-transform:uppercase"><th style="text-align:left;padding:4px 8px">Type</th><th style="text-align:left;padding:4px 8px">Period</th><th style="text-align:left;padding:4px 8px">Device</th><th style="text-align:right;padding:4px 8px">Size</th><th style="text-align:right;padding:4px 8px">Created</th><th style="text-align:right;padding:4px 8px"></th></tr>' +
+      data.reports.map(r => {
+        const badge = r.report_type === 'weekly' ? '<span style="background:var(--cyan);color:var(--bg);padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">WEEKLY</span>' : '<span style="background:var(--green);color:var(--bg);padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700">MONTHLY</span>';
+        const size = r.size_bytes > 1024*1024 ? (r.size_bytes/(1024*1024)).toFixed(1)+'MB' : (r.size_bytes/1024).toFixed(0)+'KB';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 8px">${badge}</td>
+          <td style="padding:6px 8px;font-family:var(--font-mono);font-size:12px">${esc(r.period)}</td>
+          <td style="padding:6px 8px;color:var(--text-3);font-size:12px">${esc(r.device_id)}</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--text-3);font-size:12px">${size}</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--text-3);font-size:12px">${esc(r.created)}</td>
+          <td style="padding:6px 8px;text-align:right"><a href="/api/reports/download/${encodeURIComponent(r.filename)}" class="btn btn-sm" style="font-size:11px;padding:2px 8px" download>PDF</a></td>
+        </tr>`;
+      }).join('') + '</table>';
+  } catch(e) { console.error('loadReports:', e); }
+}
+
+async function generateReport(type) {
+  try {
+    const did = getSelectedDevice();
+    const body = { type, device_id: did || '' };
+    const r = await fetch('/api/reports/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (data.ok) {
+      showToast('Report generated: ' + (data.filename || type), 'success');
+      loadReports();
+    } else {
+      showToast(data.error || 'Failed to generate report', 'error');
+    }
+  } catch(e) {
+    showToast('Report generation failed: ' + e.message, 'error');
+  }
+}
+
 // --- Events ---
 const EVENT_LABELS = {
   triggered: 'TRIGGERED', restored: 'RESTORED', created: 'CREATED', updated: 'UPDATED', deleted: 'DELETED',
@@ -2310,44 +2385,155 @@ function renderEvents(events) {
   }).join('');
 }
 
-// --- Reports ---
-async function loadReport() {
+// --- Energy Usage ---
+function getEnergyDateRange() {
+  const period = document.getElementById('energy-period').value;
+  const now = new Date();
+  const startEl = document.getElementById('energy-start');
+  const endEl = document.getElementById('energy-end');
+  startEl.style.display = period === 'custom' ? '' : 'none';
+  endEl.style.display = period === 'custom' ? '' : 'none';
+
+  if (period === 'custom') {
+    return { start: startEl.value, end: endEl.value };
+  }
+  const fmt = d => d.toISOString().slice(0, 10);
+  const end = fmt(now);
+  if (period === 'today') return { start: end, end };
+  if (period === 'week') {
+    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
+    return { start: fmt(mon), end };
+  }
+  // month
+  return { start: fmt(new Date(now.getFullYear(), now.getMonth(), 1)), end };
+}
+
+async function loadEnergy() {
+  const el = document.getElementById('energy-content');
   try {
-    const report = await api('/api/reports/latest');
-    if (report.error) {
-      document.getElementById('report-content').innerHTML = '<div class="report-empty">No reports generated yet. Reports are generated weekly.</div>';
-      return;
-    }
-    const d = report.data;
-    let html = `<div class="report-week">Week of ${d.week_start} to ${d.week_end}</div>`;
-    html += '<div class="report-summary">';
-    html += `<div class="report-stat"><div class="rs-val">${d.total_kwh.toFixed(1)}</div><div class="rs-lbl">kWh Total</div></div>`;
-    html += `<div class="report-stat"><div class="rs-val">${Math.round(d.avg_power_w)}</div><div class="rs-lbl">Avg Watts</div></div>`;
-    html += `<div class="report-stat"><div class="rs-val">${Math.round(d.peak_power_w)}</div><div class="rs-lbl">Peak Watts</div></div>`;
-    if (d.house_pct != null) {
-      html += `<div class="report-stat"><div class="rs-val">${d.house_pct}%</div><div class="rs-lbl">Of House</div></div>`;
-    }
+    const summary = await api('/api/energy/summary');
+    const { start, end } = getEnergyDateRange();
+    const daily = await api(`/api/energy/daily?start=${start}&end=${end}`);
+
+    let html = '';
+
+    // Summary cards row
+    const s = summary;
+    html += '<div class="report-summary" style="margin-bottom:16px">';
+    html += `<div class="report-stat"><div class="rs-val">${s.today.total_kwh.toFixed(2)}</div><div class="rs-lbl">Today kWh</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val" style="color:var(--cyan)">${s.today.source_a_kwh.toFixed(2)}</div><div class="rs-lbl">Today Src A</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val" style="color:var(--green)">${s.today.source_b_kwh.toFixed(2)}</div><div class="rs-lbl">Today Src B</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val">${s.this_month.total_kwh.toFixed(2)}</div><div class="rs-lbl">Month kWh</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val" style="color:var(--cyan)">${s.this_month.source_a_kwh.toFixed(2)}</div><div class="rs-lbl">Month Src A</div></div>`;
+    html += `<div class="report-stat"><div class="rs-val" style="color:var(--green)">${s.this_month.source_b_kwh.toFixed(2)}</div><div class="rs-lbl">Month Src B</div></div>`;
     html += '</div>';
 
-    // Per-outlet bars
-    if (d.per_outlet && Object.keys(d.per_outlet).length) {
-      const entries = Object.entries(d.per_outlet).sort((a,b) => b[1].kwh - a[1].kwh);
-      const maxKwh = Math.max(...entries.map(e => e[1].kwh), 0.01);
+    // Daily stacked bar chart
+    const dailyTotals = daily.filter(r => r.source === null && r.outlet === null);
+    const dailySrcA = daily.filter(r => r.source === 1 && r.outlet === null);
+    const dailySrcB = daily.filter(r => r.source === 2 && r.outlet === null);
+
+    if (dailyTotals.length > 0) {
+      const dates = dailyTotals.map(r => r.date);
+      const maxKwh = Math.max(...dailyTotals.map(r => r.kwh), 0.001);
+      const barW = Math.max(8, Math.min(40, Math.floor(600 / dates.length) - 4));
+
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="font-size:12px;color:var(--text-3);margin-bottom:8px">Daily Energy by Source</div>';
+      html += '<div style="display:flex;align-items:flex-end;gap:2px;height:120px;border-bottom:1px solid var(--border);padding-bottom:4px;overflow-x:auto">';
+
+      dates.forEach(date => {
+        const aRow = dailySrcA.find(r => r.date === date);
+        const bRow = dailySrcB.find(r => r.date === date);
+        const aKwh = aRow ? aRow.kwh : 0;
+        const bKwh = bRow ? bRow.kwh : 0;
+        const total = aKwh + bKwh;
+        const aPct = total > 0 ? (aKwh / maxKwh * 100) : 0;
+        const bPct = total > 0 ? (bKwh / maxKwh * 100) : 0;
+        const label = date.slice(5); // MM-DD
+
+        html += `<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0" title="${date}: ${total.toFixed(3)} kWh (A: ${aKwh.toFixed(3)}, B: ${bKwh.toFixed(3)})">`;
+        html += `<div style="display:flex;flex-direction:column;justify-content:flex-end;height:100px;width:${barW}px">`;
+        if (bPct > 0) html += `<div style="background:var(--green);width:100%;height:${bPct}%;min-height:${bKwh > 0 ? 2 : 0}px;border-radius:2px 2px 0 0"></div>`;
+        if (aPct > 0) html += `<div style="background:var(--cyan);width:100%;height:${aPct}%;min-height:${aKwh > 0 ? 2 : 0}px;${bPct > 0 ? '' : 'border-radius:2px 2px 0 0'}"></div>`;
+        html += '</div>';
+        html += `<div style="font-size:9px;color:var(--text-3);margin-top:2px;writing-mode:${dates.length > 14 ? 'vertical-rl' : 'horizontal-tb'}">${label}</div>`;
+        html += '</div>';
+      });
+      html += '</div>';
+      html += '<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;color:var(--text-3)">';
+      html += '<span><span style="display:inline-block;width:10px;height:10px;background:var(--cyan);border-radius:2px;vertical-align:middle"></span> Source A</span>';
+      html += '<span><span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;vertical-align:middle"></span> Source B</span>';
+      html += '</div>';
+      html += '</div>';
+    }
+
+    // Per-outlet breakdown table
+    const outletRows = daily.filter(r => r.outlet !== null && r.source === null);
+    if (outletRows.length > 0) {
+      // Group by outlet
+      const byOutlet = {};
+      outletRows.forEach(r => {
+        byOutlet[r.outlet] = byOutlet[r.outlet] || { kwh: 0, peak: 0 };
+        byOutlet[r.outlet].kwh += r.kwh;
+        byOutlet[r.outlet].peak = Math.max(byOutlet[r.outlet].peak, r.peak_power_w || 0);
+      });
+      // Get per-outlet per-source
+      const outletSrcRows = daily.filter(r => r.outlet !== null && r.source !== null);
+      const byOutletSrc = {};
+      outletSrcRows.forEach(r => {
+        const key = `${r.outlet}-${r.source}`;
+        byOutletSrc[key] = (byOutletSrc[key] || 0) + r.kwh;
+      });
+
+      const entries = Object.entries(byOutlet).sort((a, b) => b[1].kwh - a[1].kwh);
+      const maxKwh = Math.max(...entries.map(e => e[1].kwh), 0.001);
+
+      html += '<div style="font-size:12px;color:var(--text-3);margin-bottom:6px">Per-Outlet Breakdown</div>';
       html += '<div class="report-bars">';
       entries.forEach(([o, info]) => {
-        const pct = Math.round((info.kwh / maxKwh) * 100);
+        const aKwh = byOutletSrc[`${o}-1`] || 0;
+        const bKwh = byOutletSrc[`${o}-2`] || 0;
+        const aPct = info.kwh > 0 ? (aKwh / maxKwh * 100) : 0;
+        const bPct = info.kwh > 0 ? (bKwh / maxKwh * 100) : 0;
         html += `<div class="report-bar-row">
-          <span class="report-bar-label">Outlet ${esc(o)}</span>
-          <div class="report-bar-track"><div class="report-bar-fill" style="width:${pct}%"></div></div>
-          <span class="report-bar-val">${info.kwh.toFixed(1)} kWh</span>
+          <span class="report-bar-label">Outlet ${esc(String(o))}</span>
+          <div class="report-bar-track" style="display:flex">
+            <div style="height:100%;background:var(--cyan);width:${aPct}%;border-radius:3px 0 0 3px"></div>
+            <div style="height:100%;background:var(--green);width:${bPct}%;border-radius:0 3px 3px 0"></div>
+          </div>
+          <span class="report-bar-val">${info.kwh.toFixed(2)} kWh</span>
         </div>`;
       });
       html += '</div>';
     }
 
-    document.getElementById('report-content').innerHTML = html;
+    // All-time summary footer
+    html += '<div style="margin-top:12px;display:flex;gap:16px;font-size:11px;color:var(--text-3)">';
+    html += `<span>All-time: ${s.all_time.total_kwh.toFixed(2)} kWh</span>`;
+    html += `<span>Src A: ${s.all_time.source_a_kwh.toFixed(2)}</span>`;
+    html += `<span>Src B: ${s.all_time.source_b_kwh.toFixed(2)}</span>`;
+    html += '</div>';
+
+    if (!dailyTotals.length && !outletRows.length) {
+      html = '<div class="report-empty">No energy data yet. Rollups are computed daily from 1Hz power samples.</div>';
+    }
+
+    el.innerHTML = html;
   } catch (e) {
-    // keep existing content
+    el.innerHTML = '<div class="report-empty">No energy data yet. Rollups are computed daily from 1Hz power samples.</div>';
+  }
+}
+
+function downloadEnergyCSV(type) {
+  const { start, end } = getEnergyDateRange();
+  const did = currentDeviceId ? `&device_id=${encodeURIComponent(currentDeviceId)}` : '';
+  if (type === 'daily') {
+    window.location.href = `/api/energy/daily.csv?start=${start}&end=${end}${did}`;
+  } else {
+    const ms = start.slice(0, 7);
+    const me = end.slice(0, 7);
+    window.location.href = `/api/energy/monthly.csv?start=${ms}&end=${me}${did}`;
   }
 }
 
@@ -4053,8 +4239,13 @@ chartTimer = setInterval(loadCharts, 60000);
 // Refresh PDU list every 30s (catches newly added PDUs)
 setInterval(loadPDUList, 30000);
 
-// Load report on start
-loadReport();
+// Load energy on start
+loadEnergy();
+setInterval(loadEnergy, 60000);
+
+// Load reports on start
+loadReports();
+setInterval(loadReports, 60000);
 </script>
 </body>
 </html>

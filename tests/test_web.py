@@ -109,12 +109,20 @@ def make_mock_history(healthy=True):
         {"bucket": "2025-01-01T00:00:00", "outlet": 1, "current": 1.2,
          "power": 144.0, "energy": 50.5},
     ]
-    hist.list_reports.return_value = [
-        {"id": 1, "period": "daily", "created_at": "2025-01-01T00:00:00"},
-        {"id": 2, "period": "daily", "created_at": "2025-01-02T00:00:00"},
+    hist.query_energy_daily_all.return_value = [
+        {"date": "2026-02-22", "device_id": "", "source": None, "outlet": None,
+         "kwh": 5.0, "peak_power_w": 500.0, "avg_power_w": 250.0, "samples": 86400},
     ]
-    hist.get_report.return_value = None
-    hist.get_latest_report.return_value = None
+    hist.query_energy_monthly_all.return_value = [
+        {"month": "2026-02", "device_id": "", "source": None, "outlet": None,
+         "kwh": 150.0, "peak_power_w": 500.0, "avg_power_w": 250.0, "days": 28},
+    ]
+    hist.get_energy_summary.return_value = {
+        "today": {"total_kwh": 1.5, "source_a_kwh": 1.0, "source_b_kwh": 0.5},
+        "this_week": {"total_kwh": 10.0, "source_a_kwh": 7.0, "source_b_kwh": 3.0},
+        "this_month": {"total_kwh": 150.0, "source_a_kwh": 100.0, "source_b_kwh": 50.0},
+        "all_time": {"total_kwh": 500.0, "source_a_kwh": 350.0, "source_b_kwh": 150.0},
+    }
     return hist
 
 
@@ -882,85 +890,77 @@ class TestHistoryEndpoints:
 # Reports endpoint tests
 # ===========================================================================
 
-class TestReportsEndpoints:
-    """Tests for /api/reports endpoints."""
+class TestEnergyEndpoints:
+    """Tests for /api/energy/* endpoints."""
 
     @pytest.mark.asyncio
-    async def test_list_reports(self, web_server, client):
-        """GET /api/reports returns report list."""
-        resp = await client.get("/api/reports")
+    async def test_energy_daily(self, web_server, client):
+        """GET /api/energy/daily returns daily rollup data."""
+        resp = await client.get("/api/energy/daily?start=2026-02-01&end=2026-02-28")
         assert resp.status == 200
         body = await resp.json()
         assert isinstance(body, list)
-        assert len(body) == 2
-        assert body[0]["id"] == 1
+        assert len(body) >= 1
+        assert body[0]["kwh"] == 5.0
 
     @pytest.mark.asyncio
-    async def test_list_reports_503_no_history(self, client_no_history):
-        """GET /api/reports returns 503 when history not available."""
-        resp = await client_no_history.get("/api/reports")
+    async def test_energy_daily_503_no_history(self, client_no_history):
+        """GET /api/energy/daily returns 503 when history not available."""
+        resp = await client_no_history.get("/api/energy/daily")
         assert resp.status == 503
 
     @pytest.mark.asyncio
-    async def test_latest_report_none(self, web_server, client):
-        """GET /api/reports/latest returns 404 when no reports exist."""
-        web_server._history.get_latest_report.return_value = None
-        resp = await client.get("/api/reports/latest")
-        assert resp.status == 404
-        body = await resp.json()
-        assert "no reports" in body["error"]
-
-    @pytest.mark.asyncio
-    async def test_latest_report_found(self, web_server, client):
-        """GET /api/reports/latest returns latest report when available."""
-        report = {"id": 2, "period": "daily", "data": {"total_kwh": 12.5}}
-        web_server._history.get_latest_report.return_value = report
-
-        resp = await client.get("/api/reports/latest")
+    async def test_energy_monthly(self, web_server, client):
+        """GET /api/energy/monthly returns monthly rollup data."""
+        resp = await client.get("/api/energy/monthly?start=2026-01&end=2026-12")
         assert resp.status == 200
         body = await resp.json()
-        assert body["id"] == 2
-        assert body["data"]["total_kwh"] == 12.5
+        assert isinstance(body, list)
+        assert len(body) >= 1
+        assert body[0]["kwh"] == 150.0
 
     @pytest.mark.asyncio
-    async def test_latest_report_503_no_history(self, client_no_history):
-        """GET /api/reports/latest returns 503 when history not available."""
-        resp = await client_no_history.get("/api/reports/latest")
+    async def test_energy_monthly_503_no_history(self, client_no_history):
+        """GET /api/energy/monthly returns 503 when history not available."""
+        resp = await client_no_history.get("/api/energy/monthly")
         assert resp.status == 503
 
     @pytest.mark.asyncio
-    async def test_get_report_by_id(self, web_server, client):
-        """GET /api/reports/{id} returns a specific report."""
-        report = {"id": 1, "period": "daily", "data": {"total_kwh": 10.0}}
-        web_server._history.get_report.return_value = report
-
-        resp = await client.get("/api/reports/1")
+    async def test_energy_summary(self, web_server, client):
+        """GET /api/energy/summary returns energy summary."""
+        resp = await client.get("/api/energy/summary")
         assert resp.status == 200
         body = await resp.json()
-        assert body["id"] == 1
+        assert "today" in body
+        assert "this_month" in body
+        assert body["today"]["total_kwh"] == 1.5
+        assert body["today"]["source_a_kwh"] == 1.0
 
     @pytest.mark.asyncio
-    async def test_get_report_not_found(self, web_server, client):
-        """GET /api/reports/{id} returns 404 when report doesn't exist."""
-        web_server._history.get_report.return_value = None
-        resp = await client.get("/api/reports/999")
-        assert resp.status == 404
-        body = await resp.json()
-        assert "not found" in body["error"]
-
-    @pytest.mark.asyncio
-    async def test_get_report_invalid_id(self, web_server, client):
-        """GET /api/reports/{id} returns 400 for non-numeric id."""
-        resp = await client.get("/api/reports/abc")
-        assert resp.status == 400
-        body = await resp.json()
-        assert "invalid report id" in body["error"]
-
-    @pytest.mark.asyncio
-    async def test_get_report_503_no_history(self, client_no_history):
-        """GET /api/reports/{id} returns 503 when history not available."""
-        resp = await client_no_history.get("/api/reports/1")
+    async def test_energy_summary_503_no_history(self, client_no_history):
+        """GET /api/energy/summary returns 503 when history not available."""
+        resp = await client_no_history.get("/api/energy/summary")
         assert resp.status == 503
+
+    @pytest.mark.asyncio
+    async def test_energy_daily_csv(self, web_server, client):
+        """GET /api/energy/daily.csv returns CSV download."""
+        resp = await client.get("/api/energy/daily.csv?start=2026-02-01&end=2026-02-28")
+        assert resp.status == 200
+        assert resp.content_type == "text/csv"
+        text = await resp.text()
+        assert "date" in text
+        assert "kwh" in text
+
+    @pytest.mark.asyncio
+    async def test_energy_monthly_csv(self, web_server, client):
+        """GET /api/energy/monthly.csv returns CSV download."""
+        resp = await client.get("/api/energy/monthly.csv?start=2026-01&end=2026-12")
+        assert resp.status == 200
+        assert resp.content_type == "text/csv"
+        text = await resp.text()
+        assert "month" in text
+        assert "kwh" in text
 
 
 # ===========================================================================
@@ -2449,6 +2449,7 @@ class TestAdvancedConfig:
         mock_cfg.snmp_retries = 1
         mock_cfg.recovery_enabled = True
         mock_cfg.session_timeout = 86400
+        mock_cfg.reports_enabled = True
         return mock_cfg
 
     @pytest.mark.asyncio

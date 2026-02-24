@@ -74,6 +74,12 @@ class Config:
             "BRIDGE_RECOVERY_ENABLED", "true"
         ).lower() in ("true", "1", "yes")
 
+        # PDF report generation
+        self.reports_enabled = os.environ.get(
+            "BRIDGE_REPORTS_ENABLED", "true"
+        ).lower() in ("true", "1", "yes")
+        self.reports_dir = os.environ.get("BRIDGE_REPORTS_DIR", "/data/reports")
+
         # Validate device_id has no MQTT-unsafe characters (empty is OK — auto-assigned later)
         if self.device_id and any(c in self.device_id for c in "/#+ "):
             raise ConfigError(
@@ -123,6 +129,7 @@ class Config:
         "snmp_timeout": float,
         "snmp_retries": int,
         "recovery_enabled": str,  # store as string to avoid bool("false") bug
+        "reports_enabled": str,
     }
 
     def load_saved_settings(self, path: str):
@@ -139,10 +146,10 @@ class Config:
         for field, typ in self.SAVEABLE_FIELDS.items():
             if field in saved:
                 try:
-                    if field == "recovery_enabled":
+                    if field in ("recovery_enabled", "reports_enabled"):
                         # Parse bool from string/bool
                         val = saved[field]
-                        self.recovery_enabled = val in (True, "true", "1")
+                        setattr(self, field, val in (True, "true", "1"))
                     else:
                         setattr(self, field, typ(saved[field]))
                 except (ValueError, TypeError):
@@ -157,7 +164,7 @@ class Config:
         for field in self.SAVEABLE_FIELDS:
             val = getattr(self, field, None)
             # Convert bools to strings for fields stored as str
-            if field == "recovery_enabled" and isinstance(val, bool):
+            if field in ("recovery_enabled", "reports_enabled") and isinstance(val, bool):
                 val = "true" if val else "false"
             data[field] = val
         try:

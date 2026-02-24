@@ -133,3 +133,46 @@ async def test_mock_pdu_reboot():
     assert await mock.command_outlet(1, OUTLET_CMD_REBOOT)
     data = await mock.poll()
     assert data.outlets[1].state == "off"  # Off during reboot
+
+
+@pytest.mark.asyncio
+async def test_mock_pdu_outlet_power_data():
+    """Mock PDU should return non-None current/power/energy for ON outlets."""
+    mock = MockPDU()
+    data = await mock.poll()
+
+    # All outlets start ON and should have realistic power data
+    for n, outlet in data.outlets.items():
+        assert outlet.current is not None, f"Outlet {n} current should not be None"
+        assert outlet.power is not None, f"Outlet {n} power should not be None"
+        assert outlet.energy is not None, f"Outlet {n} energy should not be None"
+        assert outlet.current > 0, f"Outlet {n} should have nonzero current"
+        assert outlet.power > 0, f"Outlet {n} should have nonzero power"
+
+
+@pytest.mark.asyncio
+async def test_mock_pdu_off_outlet_zero_power():
+    """OFF outlets should have zero current and power."""
+    mock = MockPDU()
+    await mock.command_outlet(1, OUTLET_CMD_OFF)
+    data = await mock.poll()
+
+    assert data.outlets[1].current == 0.0
+    assert data.outlets[1].power == 0.0
+
+
+@pytest.mark.asyncio
+async def test_mock_pdu_ats_source_transfer():
+    """Mock PDU should simulate periodic ATS source transfers."""
+    mock = MockPDU(num_banks=2)
+    # Force a quick transfer by setting interval to 0
+    mock._source_transfer_interval = 0
+    mock._last_source_transfer = 0
+
+    initial_source = mock._active_input
+    data = await mock.poll()
+    new_source = data.ats_current_source
+
+    # Source should have switched
+    assert new_source != initial_source
+    assert new_source in (1, 2)

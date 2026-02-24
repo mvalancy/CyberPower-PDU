@@ -168,7 +168,7 @@ sequenceDiagram
     Note over SQLite: Commits batched every<br/>10 writes for I/O efficiency
 
     loop Every hour
-        Bridge->>SQLite: Generate weekly report (if needed)
+        Bridge->>SQLite: Generate PDF reports (if needed)
         Bridge->>SQLite: Cleanup old data (>60 days)
     end
 ```
@@ -185,7 +185,7 @@ sequenceDiagram
    - **Automation engine** -- checked against your rules (e.g., "if voltage drops below 110V, turn off outlet 5").
    - **Web dashboard** -- pushed to any connected browser via the web server.
 4. **Commands** (turning an outlet on/off/reboot) flow in the opposite direction: from an MQTT client through the broker to the bridge, which executes the corresponding SNMP SET on the PDU.
-5. **Database maintenance** runs hourly: generating weekly energy reports and purging data older than the retention period (60 days by default).
+5. **Database maintenance** runs hourly: purging data older than the retention period (60 days by default). A separate report scheduler generates weekly (Monday) and monthly (1st) PDF energy reports when enabled.
 
 ---
 
@@ -328,18 +328,34 @@ erDiagram
         real energy "Cumulative kWh"
     }
 
-    energy_reports {
-        integer id "Auto-increment PK"
-        text week_start "Monday date"
-        text week_end "Sunday date"
-        text created_at "ISO timestamp"
-        text data "JSON report blob"
+    energy_daily {
+        text date "YYYY-MM-DD"
+        text device_id "PDU identifier"
+        integer source "1=A, 2=B, NULL=total"
+        integer outlet "Outlet number or NULL"
+        real kwh "Energy consumed"
+        real peak_power_w "Peak power"
+        real avg_power_w "Average power"
+        integer samples "Sample count"
+    }
+
+    energy_monthly {
+        text month "YYYY-MM"
+        text device_id "PDU identifier"
+        integer source "1=A, 2=B, NULL=total"
+        integer outlet "Outlet number or NULL"
+        real kwh "Energy consumed"
+        real peak_power_w "Peak power"
+        real avg_power_w "Average power"
+        integer days "Days aggregated"
     }
 ```
 
 - **bank_samples** -- One row per bank per second. Stores voltage, current, active power, apparent power, and power factor for each of the two banks.
 - **outlet_samples** -- One row per outlet per second. Stores the outlet state (on/off), current, power, and cumulative energy (kWh).
-- **energy_reports** -- Weekly summary reports generated automatically. Each report contains a JSON blob with aggregated energy data for the week.
+- **energy_daily** -- Daily energy rollups computed from 1Hz data. Broken down by source and outlet. Never purged by cleanup.
+- **energy_monthly** -- Monthly aggregations from daily rollups. Recomputed for current and previous month. Never purged by cleanup.
+- PDF energy reports are generated from these rollup tables and stored as files in the reports directory (`/data/reports`).
 
 ### Storage and Downsampling
 
